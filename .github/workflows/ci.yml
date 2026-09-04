@@ -67,3 +67,12 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  docker:
+    name: Docker (build API image)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build API image
+        run: docker build -f backend/src/FleetDelivery.Api/Dockerfile backend
