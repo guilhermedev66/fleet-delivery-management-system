@@ -7,6 +7,8 @@ using FleetDelivery.Modules.Identity.Infrastructure;
 using FleetDelivery.Modules.Identity.Infrastructure.Persistence;
 using FleetDelivery.Modules.Identity.Infrastructure.Security;
 using FleetDelivery.Modules.Identity.Infrastructure.Seeding;
+using FleetDelivery.Modules.Shipments.Infrastructure;
+using FleetDelivery.Modules.Shipments.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -36,7 +38,16 @@ try
     // Identity module: DbContext, repositories, password hashing, JWT issuance.
     builder.Services.AddIdentityModule(builder.Configuration);
 
-    builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(LoginCommand).Assembly));
+    // Shipments module: DbContext (own "shipments" schema), repository,
+    // Outbox-wired SaveChanges. "Driver" is just an Identity User with
+    // Role.Driver in M2 — no separate Drivers module yet — so its Application
+    // layer calls back into Identity's own Application contract (via MediatR)
+    // to validate an assignable driverId; see AssignCommand.
+    builder.Services.AddShipmentsModule(builder.Configuration);
+
+    builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblies(
+        typeof(LoginCommand).Assembly,
+        typeof(FleetDelivery.Modules.Shipments.Application.Shipments.CreateShipmentCommand).Assembly));
 
     const string FrontendCorsPolicy = "Frontend";
 
@@ -139,6 +150,11 @@ try
                 provider.GetRequiredService<IUserRepository>(),
                 provider.GetRequiredService<IPasswordHasher>(),
                 provider.GetRequiredService<ILoggerFactory>().CreateLogger("IdentityDevSeeder"));
+
+            // Shipments module: own schema, own migration history table. No
+            // dev seed — there's no meaningful default shipment to seed.
+            var shipmentsDbContext = provider.GetRequiredService<ShipmentsDbContext>();
+            await shipmentsDbContext.Database.MigrateAsync();
         }
     }
 
@@ -158,6 +174,7 @@ try
     app.MapHealthChecks("/health/ready");
 
     app.MapAuthEndpoints();
+    app.MapShipmentEndpoints();
 
     app.Run();
 }

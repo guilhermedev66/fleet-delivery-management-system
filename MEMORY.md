@@ -64,6 +64,24 @@ Only what's expensive to re-derive. Not a changelog.
   normally do is instead done via WebSearch/firecrawl. If the user runs
   Antigravity separately, findings should be folded back in on request.
 
+## Testcontainers / WebApplicationFactory reliability (M2)
+
+- Running multiple `WebApplicationFactory`-backed test classes in parallel
+  (xUnit's default) intermittently throws "entry point exited without ever
+  building an IHost" — a known WebApplicationFactory/HostFactoryResolver
+  race when several hosts spin up concurrently. Fixed via
+  `backend/tests/FleetDelivery.IntegrationTests/xunit.runner.json`
+  (`parallelizeTestCollections: false`, wired into the csproj as a
+  `CopyToOutputDirectory` item) — verified clean across 3 consecutive full
+  suite runs after the fix. If a new integration test class is added and
+  this flake reappears, that config file is the first thing to check
+  (not a sign the underlying code is broken).
+- Don't trust a subagent's claim that Testcontainers "couldn't run
+  locally" at face value — verify directly. It has worked reliably in this
+  environment since M1 (see the WSL2/Docker Desktop note below); a reported
+  failure is more likely a real test bug or the flake above than an
+  environment limitation.
+
 ## Production infra decision (M0)
 
 - **Messaging in production: CloudAMQP** (free shared plan — 1M msgs/mo, 20

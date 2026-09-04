@@ -4,7 +4,8 @@ A logistics operations platform for dispatching shipments, tracking
 deliveries in real time, and managing drivers, vehicles, and routes —
 built to demonstrate a real event-driven backend, not another CRUD app.
 
-> Status: **in development (M0 — foundation)**. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+> Status: **in development (M2 — shipment & delivery lifecycle)**. Auth/RBAC,
+> CI, Docker, and the app shell are in place. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 > for the full design.
 
 ## Overview

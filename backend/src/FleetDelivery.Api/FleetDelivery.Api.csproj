@@ -18,6 +18,8 @@
     <ProjectReference Include="..\FleetDelivery.BuildingBlocks\FleetDelivery.BuildingBlocks.csproj" />
     <ProjectReference Include="..\Modules\Identity\FleetDelivery.Modules.Identity.Application\FleetDelivery.Modules.Identity.Application.csproj" />
     <ProjectReference Include="..\Modules\Identity\FleetDelivery.Modules.Identity.Infrastructure\FleetDelivery.Modules.Identity.Infrastructure.csproj" />
+    <ProjectReference Include="..\Modules\Shipments\FleetDelivery.Modules.Shipments.Application\FleetDelivery.Modules.Shipments.Application.csproj" />
+    <ProjectReference Include="..\Modules\Shipments\FleetDelivery.Modules.Shipments.Infrastructure\FleetDelivery.Modules.Shipments.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

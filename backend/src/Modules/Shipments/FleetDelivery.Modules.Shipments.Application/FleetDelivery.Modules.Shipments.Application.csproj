@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MediatR" Version="14.2.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\FleetDelivery.BuildingBlocks\FleetDelivery.BuildingBlocks.csproj" />
+    <ProjectReference Include="..\FleetDelivery.Modules.Shipments.Domain\FleetDelivery.Modules.Shipments.Domain.csproj" />
+    <!--
+      Cross-module call to Identity's Application layer (its public contract,
+      not its Infrastructure/internals) to validate that a driverId assigned
+      to a shipment actually references an active Role.Driver user. This is
+      the in-process "queries" cross-module communication style described in
+      docs/ARCHITECTURE.md — sent via MediatR's ISender, never a direct
+      repository/DbContext reference into Identity's schema.
+    -->
+    <ProjectReference Include="..\..\Identity\FleetDelivery.Modules.Identity.Application\FleetDelivery.Modules.Identity.Application.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -17,6 +17,17 @@
   --color-accent-text: #ffffff;
   --color-danger: #dc2626;
 
+  /* Status badge semantics (Shipments). Terminal-success / terminal-failure
+     (& cancelled) / needs-attention / in-progress. */
+  --badge-success-bg: #dcfce7;
+  --badge-success-text: #166534;
+  --badge-danger-bg: #fee2e2;
+  --badge-danger-text: #991b1b;
+  --badge-warning-bg: #fef3c7;
+  --badge-warning-text: #92400e;
+  --badge-neutral-bg: #dbeafe;
+  --badge-neutral-text: #1e40af;
+
   color-scheme: light dark;
 }
 
@@ -30,6 +41,15 @@
     --color-accent: #3b82f6;
     --color-accent-text: #18181b;
     --color-danger: #f87171;
+
+    --badge-success-bg: #14532d;
+    --badge-success-text: #86efac;
+    --badge-danger-bg: #7f1d1d;
+    --badge-danger-text: #fca5a5;
+    --badge-warning-bg: #78350f;
+    --badge-warning-text: #fcd34d;
+    --badge-neutral-bg: #1e3a8a;
+    --badge-neutral-text: #93c5fd;
   }
 }
 
@@ -42,6 +62,15 @@
   --color-accent: #3b82f6;
   --color-accent-text: #18181b;
   --color-danger: #f87171;
+
+  --badge-success-bg: #14532d;
+  --badge-success-text: #86efac;
+  --badge-danger-bg: #7f1d1d;
+  --badge-danger-text: #fca5a5;
+  --badge-warning-bg: #78350f;
+  --badge-warning-text: #fcd34d;
+  --badge-neutral-bg: #1e3a8a;
+  --badge-neutral-text: #93c5fd;
 }
 
 body {

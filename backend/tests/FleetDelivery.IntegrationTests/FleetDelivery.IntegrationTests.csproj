@@ -23,10 +23,22 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Disables cross-collection parallelization: this suite spins up multiple
+         WebApplicationFactory hosts (one per test class), and running them
+         concurrently intermittently trips a known WebApplicationFactory/
+         HostFactoryResolver race ("entry point exited without ever building
+         an IHost"). Sequential is slower but reliable for a suite this size. -->
+    <None Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\FleetDelivery.Api\FleetDelivery.Api.csproj" />
     <ProjectReference Include="..\..\src\Modules\Identity\FleetDelivery.Modules.Identity.Domain\FleetDelivery.Modules.Identity.Domain.csproj" />
     <ProjectReference Include="..\..\src\Modules\Identity\FleetDelivery.Modules.Identity.Application\FleetDelivery.Modules.Identity.Application.csproj" />
     <ProjectReference Include="..\..\src\Modules\Identity\FleetDelivery.Modules.Identity.Infrastructure\FleetDelivery.Modules.Identity.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Shipments\FleetDelivery.Modules.Shipments.Domain\FleetDelivery.Modules.Shipments.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Shipments\FleetDelivery.Modules.Shipments.Application\FleetDelivery.Modules.Shipments.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Shipments\FleetDelivery.Modules.Shipments.Infrastructure\FleetDelivery.Modules.Shipments.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
