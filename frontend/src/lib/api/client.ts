@@ -1,6 +1,8 @@
 import { useAuthStore } from '../../features/auth/authStore'
 
-const API_URL = import.meta.env.VITE_API_URL
+// Falls back to the docker-compose API port so `npm run dev` works out of
+// the box without requiring a manual `cp .env.example .env` first.
+const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:5080'
 
 /**
  * Thrown for any non-2xx response. Callers that need to distinguish
