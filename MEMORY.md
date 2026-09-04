@@ -31,10 +31,35 @@ Only what's expensive to re-derive. Not a changelog.
 
 ## Environment notes
 
-- Docker CLI is not yet wired into this WSL2 distro (Docker Desktop WSL
-  integration not enabled). `docker-compose.yml` exists and is correct, but
-  hasn't been run/verified locally yet — verify before declaring M1 Docker
-  work PASS.
+- Bare `docker` in WSL2 refuses to run (its wrapper script checks for
+  official WSL integration, which isn't enabled). The real Windows binary
+  works fine directly though: `docker.exe` and `docker.exe compose` (both
+  at `/mnt/c/Users/guilh/AppData/Local/Programs/DockerDesktop/resources/bin`,
+  already on PATH) talk to the same Docker Desktop engine. Use `docker.exe`
+  everywhere in this project instead of `docker`.
+- First `docker.exe compose up` on a fresh named volume can hit RabbitMQ's
+  alpine image failing with `Error when reading /var/lib/rabbitmq/.erlang.cookie: eacces`
+  on this host. Fix: `docker.exe compose down rabbitmq && docker.exe volume rm <vol> && docker.exe compose up -d rabbitmq` —
+  recreating the volume clears it. Happened once during M1 setup, not
+  reproduced after.
+- `dotnet` in this shell is a shim to the Windows `dotnet.exe`
+  (`/home/guilh/.local/bin/dotnet`), so a locally-run `dotnet run` API is a
+  Windows process. `curl` from this WSL shell to its `localhost` port gets
+  connection-refused (WSL2 localhost-forwarding isn't proxying it here) —
+  build/test tooling all works fine, it's only live-server curl checks from
+  this shell that don't reach it. Don't waste time debugging this; treat
+  the WebApplicationFactory-based integration tests (real in-process HTTP
+  pipeline, no network needed) plus CI (native Linux) as the verification
+  signal instead. If a live curl check is ever needed, run it from a
+  Windows-side terminal/PowerShell, not this WSL shell.
+- No `/var/run/docker.sock` in this WSL distro (WSL integration is off in
+  Docker Desktop settings), but Testcontainers-based integration tests
+  (.NET, `Testcontainers.PostgreSql`) run FINE locally anyway — the
+  Docker.DotNet client falls back to Docker Desktop's WSL2 shared-socket
+  proxy at `/mnt/wsl/docker-desktop/shared-sockets/...` even without this
+  distro being in the explicit WSL-integration allowlist. Don't assume
+  Testcontainers is blocked here; it isn't, verified during M1 (Identity
+  module integration tests actually ran against a real ephemeral Postgres).
 - No direct tool access to Antigravity from this session — research it would
   normally do is instead done via WebSearch/firecrawl. If the user runs
   Antigravity separately, findings should be folded back in on request.

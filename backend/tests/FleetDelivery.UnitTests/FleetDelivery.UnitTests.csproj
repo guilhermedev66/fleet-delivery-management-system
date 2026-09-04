@@ -22,6 +22,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\FleetDelivery.BuildingBlocks\FleetDelivery.BuildingBlocks.csproj" />
     <ProjectReference Include="..\..\src\FleetDelivery.Api\FleetDelivery.Api.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Identity\FleetDelivery.Modules.Identity.Domain\FleetDelivery.Modules.Identity.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Identity\FleetDelivery.Modules.Identity.Application\FleetDelivery.Modules.Identity.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Identity\FleetDelivery.Modules.Identity.Infrastructure\FleetDelivery.Modules.Identity.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

@@ -9,6 +9,8 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="FluentAssertions" Version="8.10.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.11" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="Testcontainers.PostgreSql" Version="4.14.0" />
     <PackageReference Include="Testcontainers.RabbitMq" Version="4.14.0" />
@@ -18,6 +20,13 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\FleetDelivery.Api\FleetDelivery.Api.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Identity\FleetDelivery.Modules.Identity.Domain\FleetDelivery.Modules.Identity.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Identity\FleetDelivery.Modules.Identity.Application\FleetDelivery.Modules.Identity.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Identity\FleetDelivery.Modules.Identity.Infrastructure\FleetDelivery.Modules.Identity.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

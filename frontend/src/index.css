@@ -1,10 +1,11 @@
 @import 'tailwindcss';
 
 /*
- * Placeholder design tokens for M0 scaffolding.
- * Real visual identity (brand palette, typography scale, spacing system)
- * lands in M1+ per docs/ARCHITECTURE.md — this is intentionally minimal:
- * a neutral light/dark palette, nothing more.
+ * Design tokens (CSS variables). Light values on :root are the default.
+ * Dark values apply either from the OS preference (when the user hasn't
+ * made an explicit in-app choice) or from an explicit data-theme="dark"/
+ * "light" attribute set by the theme toggle (see src/lib/theme.ts) — the
+ * explicit attribute always wins over the OS preference.
  */
 :root {
   --color-bg: #ffffff;
@@ -14,12 +15,13 @@
   --color-text-muted: #52525b;
   --color-accent: #2563eb;
   --color-accent-text: #ffffff;
+  --color-danger: #dc2626;
 
   color-scheme: light dark;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --color-bg: #18181b;
     --color-bg-subtle: #27272a;
     --color-border: #3f3f46;
@@ -27,7 +29,19 @@
     --color-text-muted: #a1a1aa;
     --color-accent: #3b82f6;
     --color-accent-text: #18181b;
+    --color-danger: #f87171;
   }
+}
+
+:root[data-theme='dark'] {
+  --color-bg: #18181b;
+  --color-bg-subtle: #27272a;
+  --color-border: #3f3f46;
+  --color-text: #f4f4f5;
+  --color-text-muted: #a1a1aa;
+  --color-accent: #3b82f6;
+  --color-accent-text: #18181b;
+  --color-danger: #f87171;
 }
 
 body {

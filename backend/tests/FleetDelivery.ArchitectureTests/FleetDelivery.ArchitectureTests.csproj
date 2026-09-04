@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="FluentAssertions" Version="8.10.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="NetArchTest.Rules" Version="1.3.2" />
     <PackageReference Include="xunit" Version="2.9.3" />
@@ -22,6 +23,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\FleetDelivery.BuildingBlocks\FleetDelivery.BuildingBlocks.csproj" />
     <ProjectReference Include="..\..\src\FleetDelivery.Api\FleetDelivery.Api.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Identity\FleetDelivery.Modules.Identity.Domain\FleetDelivery.Modules.Identity.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Identity\FleetDelivery.Modules.Identity.Application\FleetDelivery.Modules.Identity.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Identity\FleetDelivery.Modules.Identity.Infrastructure\FleetDelivery.Modules.Identity.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
