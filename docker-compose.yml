@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fleet-postgres
+    environment:
+      POSTGRES_USER: fleet
+      POSTGRES_PASSWORD: fleet_dev_password
+      POSTGRES_DB: fleet_delivery
+    ports:
+      - "5432:5432"
+    volumes:
+      - fleet-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fleet -d fleet_delivery"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: fleet-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: fleet
+      RABBITMQ_DEFAULT_PASS: fleet_dev_password
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - fleet-rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: src/FleetDelivery.Api/Dockerfile
+    container_name: fleet-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=fleet_delivery;Username=fleet;Password=fleet_dev_password"
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Username: fleet
+      RabbitMq__Password: fleet_dev_password
+    ports:
+      - "5080:8080"
+
+volumes:
+  fleet-postgres-data:
+  fleet-rabbitmq-data:

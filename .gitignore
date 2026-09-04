@@ -1,0 +1,47 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+artifacts/
+*.dbmdl
+
+## Node / Frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vite/
+
+## Env / secrets
+.env
+.env.*
+!.env.example
+appsettings.Local.json
+*.pfx
+
+## Logs
+*.log
+logs/
+
+## Local tooling
+.claude/
+
+## OS / Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+## Docker
+docker-compose.override.yml
+
+## Test / coverage
+coverage/
+TestResults/
+*.trx
+
+## Uploads (local dev storage)
+uploads/

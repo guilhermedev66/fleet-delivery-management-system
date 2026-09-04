@@ -1,0 +1,11 @@
+<Project>
+
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <!-- Analysis/warnings-as-errors will be tightened once modules land in M1+. -->
+  </PropertyGroup>
+
+</Project>
