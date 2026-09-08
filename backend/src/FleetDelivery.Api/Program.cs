@@ -1,6 +1,8 @@
 using System.Text;
 using FleetDelivery.Api.Endpoints;
 using FleetDelivery.Api.HealthChecks;
+using FleetDelivery.Api.Hubs;
+using FleetDelivery.Api.RealTime;
 using FleetDelivery.Modules.Identity.Application.Abstractions;
 using FleetDelivery.Modules.Identity.Application.Users;
 using FleetDelivery.Modules.Identity.Infrastructure;
@@ -58,6 +60,18 @@ try
         typeof(FleetDelivery.Modules.Shipments.Application.Shipments.CreateShipmentCommand).Assembly,
         typeof(FleetDelivery.Modules.Vehicles.Application.Vehicles.RegisterVehicleCommand).Assembly));
 
+    builder.Services.AddSignalR();
+
+    // M5: broadcasts M4's outbox events to the dispatch board in real time.
+    // Reuses Shipments' RabbitMqConnectionProvider (already DI-registered by
+    // AddShipmentsModule) rather than opening a second broker connection.
+    builder.Services.Configure<DispatchBoardConsumerOptions>(builder.Configuration.GetSection(DispatchBoardConsumerOptions.SectionName));
+
+    if (builder.Configuration.GetValue($"{DispatchBoardConsumerOptions.SectionName}:ConsumerEnabled", true))
+    {
+        builder.Services.AddHostedService<DispatchBoardConsumerHostedService>();
+    }
+
     const string FrontendCorsPolicy = "Frontend";
 
     builder.Services.AddCors(options =>
@@ -105,6 +119,29 @@ try
                     string.IsNullOrEmpty(jwtOptions.SigningKey) ? new string('0', 32) : jwtOptions.SigningKey)),
                 ValidateLifetime = true,
                 ClockSkew = TimeSpan.FromSeconds(30),
+            };
+
+            // Browsers' native WebSocket API can't set an Authorization
+            // header, so SignalR's JS client sends the access token as an
+            // "access_token" query-string parameter instead — this is the
+            // standard, documented ASP.NET Core pattern for JWT + SignalR.
+            // Scoped to exactly the hub path, not every request, so a token
+            // leaking into (proxy/browser) URL logs stays limited to this
+            // one endpoint rather than becoming a general accepted-anywhere
+            // auth channel.
+            options.Events = new JwtBearerEvents
+            {
+                OnMessageReceived = context =>
+                {
+                    var accessToken = context.Request.Query["access_token"];
+
+                    if (!string.IsNullOrEmpty(accessToken) && context.HttpContext.Request.Path.StartsWithSegments("/hubs"))
+                    {
+                        context.Token = accessToken;
+                    }
+
+                    return Task.CompletedTask;
+                },
             };
         });
 
@@ -191,6 +228,7 @@ try
     app.MapAuthEndpoints();
     app.MapShipmentEndpoints();
     app.MapVehicleEndpoints();
+    app.MapHub<DispatchHub>("/hubs/dispatch");
 
     app.Run();
 }

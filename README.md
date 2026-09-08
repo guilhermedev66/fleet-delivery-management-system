@@ -5,9 +5,9 @@ deliveries in real time, and managing drivers, vehicles, and routes —
 built to demonstrate a real event-driven backend, not another CRUD app.
 
 > Status: **in development (shipment & delivery lifecycle, fleet vehicle
-> registry, RabbitMQ outbox publisher)**. Auth/RBAC, CI, Docker, and the app
-> shell are in place. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for
-> the full design.
+> registry, RabbitMQ outbox publisher, real-time dispatch board)**.
+> Auth/RBAC, CI, Docker, and the app shell are in place. See
+> [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design.
 
 ## Overview
 
@@ -47,11 +47,15 @@ Vitest, React Testing Library.
   drains it to RabbitMQ (`FOR UPDATE SKIP LOCKED` claiming, safe across
   multiple app instances, capped exponential retry backoff — never
   hot-looping, never silently dropping a message)
-- Idempotent RabbitMQ consumers (inbox pattern) with retry + DLQ —
-  **planned**: the publisher side is built and delivers real messages, but no
-  consumer exists yet to receive them
+- Idempotent RabbitMQ consumers (inbox pattern) with retry + DLQ — the first
+  real consumer (the dispatch board) is built with its own dead-letter
+  topology; the shared *idempotent-write* Inbox pattern applies once a
+  consumer actually mutates data (this one only broadcasts, so it doesn't
+  need it yet — see backend/README.md)
 - Concurrency-safe dispatch (driver + vehicle assignment)
-- Real-time dispatch board and tracking via SignalR
+- Real-time dispatch board via SignalR, authorized server-side per
+  connection (role-derived group membership, never client-supplied) —
+  tracking is still planned
 - Secure Proof of Delivery uploads
 - RBAC with server-enforced ownership (no client-trusted IDs)
 - OpenTelemetry tracing across HTTP, database, and messaging

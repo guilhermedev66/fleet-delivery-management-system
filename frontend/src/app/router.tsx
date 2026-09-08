@@ -2,6 +2,7 @@ import { createBrowserRouter } from 'react-router-dom'
 import { PlaceholderPage } from '../components/PlaceholderPage'
 import { DashboardPage } from '../features/dashboard/DashboardPage'
 import { LoginPage } from '../features/auth/LoginPage'
+import { DispatchBoardPage } from '../features/dispatch/DispatchBoardPage'
 import { CreateShipmentPage } from '../features/shipments/CreateShipmentPage'
 import { ShipmentDetailPage } from '../features/shipments/ShipmentDetailPage'
 import { ShipmentsListPage } from '../features/shipments/ShipmentsListPage'
@@ -25,7 +26,7 @@ export const router = createBrowserRouter([
           { path: 'shipments', element: <ShipmentsListPage /> },
           { path: 'shipments/new', element: <CreateShipmentPage /> },
           { path: 'shipments/:id', element: <ShipmentDetailPage /> },
-          { path: 'dispatch', element: <PlaceholderPage title="Dispatch Board" /> },
+          { path: 'dispatch', element: <DispatchBoardPage /> },
           { path: 'routes', element: <PlaceholderPage title="Routes" /> },
           { path: 'drivers', element: <PlaceholderPage title="Drivers" /> },
           { path: 'vehicles', element: <VehiclesListPage /> },

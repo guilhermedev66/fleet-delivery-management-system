@@ -60,6 +60,7 @@ public sealed class ShipmentsApiFactory : WebApplicationFactory<Program>, IAsync
                 ["RateLimiting:Login:PermitLimit"] = "1000",
                 ["RateLimiting:Login:WindowSeconds"] = "60",
                 ["Outbox:PublisherEnabled"] = "false",
+                ["RealTime:ConsumerEnabled"] = "false",
             });
         });
     }

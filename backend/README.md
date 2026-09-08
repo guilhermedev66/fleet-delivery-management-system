@@ -282,6 +282,58 @@ dotnet ef database update \
   --context VehiclesDbContext
 ```
 
+## Real-time: dispatch board (M5)
+
+`DispatchBoardConsumerHostedService` (in `FleetDelivery.Api/RealTime/`) is
+the first real consumer of M4's outbox events: it binds a durable queue to
+`fleet.events` (routing pattern `#` — a dispatch board's whole point is
+seeing everything) and re-broadcasts each message to `DispatchHub`
+(`FleetDelivery.Api/Hubs/`) over SignalR at `/hubs/dispatch`.
+
+- **Authorization**: the hub requires authentication; group membership is
+  derived from the connection's JWT claims in `OnConnectedAsync` — a
+  Dispatcher/Admin joins the shared `dispatchers` group (which the consumer
+  broadcasts to), never from anything the client sends. A Driver connecting
+  gets their own per-user group only, receiving nothing from the dispatchers
+  broadcast — covered by
+  `DispatchBoardTests.An_authenticated_Driver_does_not_receive_dispatchers_group_broadcasts`
+  against a real connection, not just a design claim.
+- **JWT over SignalR**: browsers can't set an `Authorization` header on a
+  WebSocket handshake, so the token travels as an `access_token` query
+  parameter instead (`JwtBearerEvents.OnMessageReceived` in `Program.cs`,
+  scoped to paths under `/hubs` only — it doesn't relax auth anywhere else).
+  Standard, documented ASP.NET Core SignalR pattern, not a workaround.
+- **Dead-lettering**: this consumer's queue is declared with
+  `x-dead-letter-exchange` pointing at a fanout `fleet.events.dlx`. A
+  message that fails to process (malformed payload — its only realistic
+  failure mode, since broadcasting is in-process and has no external
+  dependency to be transiently down) is nack'd without requeue and lands in
+  `dispatch-board.fleet.events.dlq` for inspection — never retried in a
+  loop, never silently dropped. Simpler than the outbox publisher's
+  bounded-backoff retry deliberately: see the doc comment on
+  `DispatchBoardConsumerHostedService` for why that asymmetry is
+  intentional, not an oversight.
+- **What ships out**: `DispatchBoardEvent { type, occurredAt, data }` — a
+  thin projection of the RabbitMQ envelope (drops `messageId`/`correlationId`,
+  which are internal plumbing a browser has no use for), pushed as the
+  `shipmentEvent` SignalR method.
+- **Frontend**: `frontend/src/features/dispatch/` — `DispatchBoardPage`
+  replaces the old placeholder route, showing a live, capped (50 most
+  recent) feed with a connection-status indicator
+  (connecting/live/reconnecting/disconnected). It's a supplement to the
+  Shipments list, not a replacement — no attempt to reconstruct full
+  shipment state from the event stream alone.
+- **Disabled in most integration tests** (`RealTime:ConsumerEnabled = false`
+  in `ShipmentsApiFactory`, same reasoning as `Outbox:PublisherEnabled`).
+  `DispatchBoardTests` uses `OutboxPublisherApiFactory` (real RabbitMQ)
+  with the consumer left at its default-enabled setting, and a real
+  `Microsoft.AspNetCore.SignalR.Client` connection over the
+  `WebApplicationFactory`'s `TestServer` (via `HttpTransportType.LongPolling`
+  — `TestServer` doesn't support real WebSockets, the documented testing
+  workaround) — proving the full pipeline end to end: create shipment ->
+  outbox row -> published -> consumed -> broadcast -> a real connected
+  client receives it.
+
 ## Required configuration
 
 `appsettings.json` (the base file, tracked in git) ships **empty**
@@ -307,6 +359,8 @@ shouldn't be tracked at all).
 | `Outbox:PollIntervalSeconds` | How often the publisher polls for unprocessed rows (default `2`) |
 | `Outbox:BatchSize` | Max rows claimed per poll (default `20`) |
 | `Outbox:MaxBackoffSeconds` | Ceiling on a failing row's retry backoff (default `300`) |
+| `RealTime:ConsumerEnabled` | Whether `DispatchBoardConsumerHostedService` runs (default `true`; test hosts without a RabbitMQ container set this `false`) |
+| `RealTime:QueueName` / `RoutingPattern` / `DeadLetterExchangeName` / `DeadLetterQueueName` | Dispatch board consumer's queue/DLQ topology — sane defaults, rarely need overriding |
 
 ## Auth: tokens, cookies, rotation
 
@@ -363,6 +417,12 @@ dotnet test FleetDelivery.sln
   concurrent `OutboxBatchProcessor`s racing the same rows never publish the
   same message twice (real proof of the `FOR UPDATE SKIP LOCKED` claiming
   strategy, not an assumption).
+- **`DispatchBoardTests`** (same factory): a real, authenticated SignalR
+  client receives a real broadcast end to end when a shipment is created
+  (create -> outbox -> publish -> consume -> broadcast -> received, no step
+  mocked); a Driver's connection never receives the dispatchers-group
+  firehose — real proof of the hub's server-side group authorization, not
+  an assumption.
 - **`FleetDelivery.ArchitectureTests`** — NetArchTest rules: Identity.Domain,
   Shipments.Domain, and Vehicles.Domain have no dependency on their own
   module's Infrastructure, ASP.NET Core, or EF Core; same for each module's

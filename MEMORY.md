@@ -183,6 +183,51 @@ new backend milestones to it rather than implementing them directly;
 finishing a unit Claude already started mid-flight is the documented
 exception, not a general license to keep building backend features solo.
 
+## M5 — Real-time Dispatch Board (RabbitMQ consumer + SignalR)
+
+- **First real consumer of M4's outbox events.** Chose "dispatch board"
+  over a new "Tracking" module because `@microsoft/signalr` was already a
+  frontend dependency (scaffolded at M0, unused until now), the
+  architecture doc already specifies the SignalR security model in detail,
+  and Shipments already records everything a dispatch feed needs — no new
+  schema/module was justified for a pure broadcast.
+- **Consumer + Hub live in `FleetDelivery.Api`**, not inside Shipments —
+  unlike the M4 publisher, this isn't shipment-domain business logic, it's
+  a cross-cutting integration concern (mirrors where Endpoints/health
+  checks already live: composition-root concerns sit in Api). It reuses
+  Shipments' `RabbitMqConnectionProvider` (already a DI singleton) for its
+  channel rather than opening a second broker connection.
+- **No Inbox/idempotency table for this consumer.** The documented Inbox
+  pattern exists to guard *duplicate DB writes* on redelivery; this
+  consumer only reads and broadcasts (no DB write of its own), so a
+  redelivered message just causes one extra harmless UI push, not a
+  correctness bug. Add Inbox tracking when a consumer that actually
+  mutates data (e.g. a future Notifications module persisting a row)
+  shows up — don't add the machinery pre-emptively for a stateless one.
+- **DLQ, deliberately simpler than the publisher's retry**: this
+  consumer's only realistic failure mode is a malformed payload (broadcast
+  itself is in-process, nothing external to be transiently down), so a
+  failed message is nack'd straight to a dead-letter queue — no
+  bounded-retry-with-backoff machinery, unlike the publisher. Different
+  failure profile, deliberately different (simpler) handling.
+- **JWT-over-SignalR**: token passed as `?access_token=` query param
+  (browsers can't set WS handshake headers), read via
+  `JwtBearerEvents.OnMessageReceived`, scoped to `/hubs/*` paths only.
+  Standard ASP.NET Core pattern, not a security relaxation elsewhere.
+- **Evidence**: 83 backend tests green (39 unit, 18 architecture, 26
+  integration — 2 new `DispatchBoardTests` using a real
+  `Microsoft.AspNetCore.SignalR.Client` connection over
+  `WebApplicationFactory`'s `TestServer` via `HttpTransportType.LongPolling`,
+  the documented workaround since `TestServer` can't do real WebSockets).
+  Frontend: lint/typecheck/tests(7)/build/format all green.
+
+### Ownership note update
+
+Still no Codex mechanism reachable this session (re-checked via
+`ListAgents` before starting M5, per the user's instruction not to assume
+unavailability carries over silently) — same conclusion as the M4 handoff,
+not re-logging further unless that changes.
+
 ## Full spec
 
 The complete product/architecture brief for this project lives in the
