@@ -226,6 +226,14 @@ public static class ShipmentEndpoints
             return Results.Unauthorized();
         }
 
+        // Checked against IFormFile.Length — known from the multipart part's
+        // headers — before ever reading the body, so an oversized upload is
+        // rejected without first buffering the whole thing into memory.
+        if (file.Length > ProofOfDeliveryPhoto.MaxContentBytes)
+        {
+            return MapFailure(ShipmentErrors.ProofOfDeliveryTooLarge);
+        }
+
         await using var contentStream = new MemoryStream();
         await file.CopyToAsync(contentStream, cancellationToken);
 

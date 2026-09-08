@@ -5,6 +5,7 @@ using FleetDelivery.BuildingBlocks.Messaging;
 using FleetDelivery.Modules.Shipments.Application.Abstractions;
 using FleetDelivery.Modules.Shipments.Domain;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace FleetDelivery.Modules.Shipments.Infrastructure.Persistence;
 
@@ -48,6 +49,9 @@ public sealed class ShipmentsDbContext(DbContextOptions<ShipmentsDbContext> opti
         base.OnModelCreating(modelBuilder);
     }
 
+    /// <summary>Postgres error code for a unique-constraint violation.</summary>
+    private const string UniqueViolationSqlState = "23505";
+
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         AppendOutboxMessagesForPendingDomainEvents();
@@ -61,6 +65,18 @@ public sealed class ShipmentsDbContext(DbContextOptions<ShipmentsDbContext> opti
             // Translated to an Application-layer exception so command
             // handlers never need to reference EF Core themselves.
             throw new ConcurrencyConflictException(ex);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException
+        {
+            SqlState: UniqueViolationSqlState,
+            ConstraintName: "PK_proof_of_delivery_photos",
+        })
+        {
+            // Concurrent-upload race backstop — see the doc comment on
+            // ProofOfDeliveryPhotoAlreadyExistsException. Matched on the
+            // specific constraint name so an unrelated unique violation
+            // (e.g. TrackingNumber) is never misclassified as this.
+            throw new ProofOfDeliveryPhotoAlreadyExistsException(ex);
         }
     }
 

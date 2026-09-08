@@ -212,6 +212,17 @@ try
 
     app.UseHttpsRedirection();
 
+    // Blocks MIME-sniffing on every response — most relevant to Proof of
+    // Delivery downloads (a served "image" is only ever image/jpeg or
+    // image/png in practice, but nothing stops a browser that ignores the
+    // header from guessing otherwise without this) and costs nothing
+    // elsewhere, so it's applied globally rather than only on that route.
+    app.Use(async (context, next) =>
+    {
+        context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
+        await next();
+    });
+
     app.UseCors(FrontendCorsPolicy);
 
     app.UseRateLimiter();

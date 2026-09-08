@@ -73,6 +73,15 @@ public sealed class AttachProofOfDeliveryCommandHandler(
         {
             return Result.Failure<ShipmentDto>(ShipmentErrors.ConcurrencyConflict);
         }
+        catch (ProofOfDeliveryPhotoAlreadyExistsException)
+        {
+            // Two concurrent uploads both passed the in-memory
+            // HasProofOfDelivery check above; this one lost the race at the
+            // database level. Same 409 the fast path returns — the caller
+            // can't tell which check caught it, nor should they need to.
+            return Result.Failure<ShipmentDto>(ShipmentErrors.ProofOfDeliveryAlreadyAttached(
+                "A Proof of Delivery photo was already attached to this shipment."));
+        }
 
         return shipment.ToDto();
     }

@@ -127,6 +127,43 @@ public sealed class ProofOfDeliveryEndpointsTests : IClassFixture<ShipmentsApiFa
     }
 
     [Fact]
+    public async Task Two_concurrent_uploads_for_the_same_shipment_never_both_succeed_and_neither_returns_500()
+    {
+        var client = _factory.CreateClient();
+        var (_, dispatcherEmail, dispatcherPassword) = await _factory.CreateUserAsync(Role.Dispatcher);
+        var (driverId, driverEmail, driverPassword) = await _factory.CreateUserAsync(Role.Driver);
+        var dispatcherToken = await LoginAsync(client, dispatcherEmail, dispatcherPassword);
+        var driverToken = await LoginAsync(client, driverEmail, driverPassword);
+        var shipment = await CreateAndDeliverShipmentAsync(client, dispatcherToken, driverToken, driverId);
+
+        // Same shipment, same driver, two distinct photos racing each
+        // other — proves the database-level backstop (ProofOfDeliveryPhotoAlreadyExistsException),
+        // not just the in-memory HasProofOfDelivery fast path a single
+        // sequential request would exercise.
+        var responses = await Task.WhenAll(
+            UploadAsync(client, shipment.Id, driverToken, PngPhoto, "image/png", "a.png"),
+            UploadAsync(client, shipment.Id, driverToken, JpegPhoto, "image/jpeg", "b.jpg"));
+
+        try
+        {
+            responses.Should().Contain(r => r.StatusCode == HttpStatusCode.OK);
+            responses.Should().Contain(r => r.StatusCode == HttpStatusCode.Conflict);
+            responses.Should().NotContain(r => (int)r.StatusCode >= 500, "a losing race must map to a clean 409, never an unhandled 500");
+
+            var conflictResponse = responses.Single(r => r.StatusCode == HttpStatusCode.Conflict);
+            var problem = await conflictResponse.Content.ReadFromJsonAsync<ProblemDetails>();
+            problem!.Type.Should().Contain("proof-of-delivery-already-attached");
+        }
+        finally
+        {
+            foreach (var response in responses)
+            {
+                response.Dispose();
+            }
+        }
+    }
+
+    [Fact]
     public async Task Second_upload_returns_409_and_does_not_replace_the_original_photo()
     {
         var client = _factory.CreateClient();
@@ -242,6 +279,8 @@ public sealed class ProofOfDeliveryEndpointsTests : IClassFixture<ShipmentsApiFa
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         response.Content.Headers.ContentType!.MediaType.Should().Be(expectedContentType);
         (await response.Content.ReadAsByteArrayAsync()).Should().Equal(expectedBytes);
+        response.Headers.TryGetValues("X-Content-Type-Options", out var nosniffValues).Should().BeTrue();
+        nosniffValues!.Should().ContainSingle().Which.Should().Be("nosniff");
     }
 
     private static async Task<string> LoginAsync(HttpClient client, string email, string password)
