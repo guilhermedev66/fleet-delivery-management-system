@@ -9,6 +9,8 @@ using FleetDelivery.Modules.Identity.Infrastructure.Security;
 using FleetDelivery.Modules.Identity.Infrastructure.Seeding;
 using FleetDelivery.Modules.Shipments.Infrastructure;
 using FleetDelivery.Modules.Shipments.Infrastructure.Persistence;
+using FleetDelivery.Modules.Vehicles.Infrastructure;
+using FleetDelivery.Modules.Vehicles.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -45,9 +47,16 @@ try
     // to validate an assignable driverId; see AssignCommand.
     builder.Services.AddShipmentsModule(builder.Configuration);
 
+    // Vehicles module: DbContext (own "vehicles" schema), repository. No
+    // cross-module calls out of Vehicles itself; Shipments' AssignCommand
+    // calls back into it (mirroring the Identity driver-validation call) to
+    // validate an assignable vehicleId.
+    builder.Services.AddVehiclesModule(builder.Configuration);
+
     builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblies(
         typeof(LoginCommand).Assembly,
-        typeof(FleetDelivery.Modules.Shipments.Application.Shipments.CreateShipmentCommand).Assembly));
+        typeof(FleetDelivery.Modules.Shipments.Application.Shipments.CreateShipmentCommand).Assembly,
+        typeof(FleetDelivery.Modules.Vehicles.Application.Vehicles.RegisterVehicleCommand).Assembly));
 
     const string FrontendCorsPolicy = "Frontend";
 
@@ -155,6 +164,11 @@ try
             // dev seed — there's no meaningful default shipment to seed.
             var shipmentsDbContext = provider.GetRequiredService<ShipmentsDbContext>();
             await shipmentsDbContext.Database.MigrateAsync();
+
+            // Vehicles module: own schema, own migration history table. No
+            // dev seed either — same reasoning as Shipments.
+            var vehiclesDbContext = provider.GetRequiredService<VehiclesDbContext>();
+            await vehiclesDbContext.Database.MigrateAsync();
         }
     }
 
@@ -175,6 +189,7 @@ try
 
     app.MapAuthEndpoints();
     app.MapShipmentEndpoints();
+    app.MapVehicleEndpoints();
 
     app.Run();
 }

@@ -30,6 +30,7 @@ export interface ShipmentResponse {
   origin: Address
   destination: Address
   assignedDriverId: string | null
+  assignedVehicleId: string | null
   createdByUserId: string
   createdAt: string
   version: string
@@ -72,6 +73,13 @@ export interface DeliverShipmentRequest {
   notes?: string
 }
 
+export interface AvailableDriver {
+  id: string
+  fullName: string
+  email: string
+  isAvailable: boolean
+}
+
 function buildQuery(params: Record<string, string | number | undefined>): string {
   const search = new URLSearchParams()
   for (const [key, value] of Object.entries(params)) {
@@ -108,13 +116,19 @@ export function readyForDispatch(id: string, expectedVersion: string): Promise<S
   })
 }
 
+export function listDrivers(): Promise<AvailableDriver[]> {
+  return apiClient.get<AvailableDriver[]>('/api/shipments/drivers')
+}
+
 export function assignShipment(
   id: string,
   driverId: string,
+  vehicleId: string,
   expectedVersion: string,
 ): Promise<ShipmentResponse> {
   return apiClient.post<ShipmentResponse>(`/api/shipments/${id}/assign`, {
     driverId,
+    vehicleId,
     expectedVersion,
   })
 }

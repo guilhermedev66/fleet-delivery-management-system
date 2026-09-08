@@ -14,7 +14,7 @@ public sealed record ShipmentCreated(Guid ShipmentId, string TrackingNumber, Gui
 
 public sealed record ShipmentReadyForDispatch(Guid ShipmentId, DateTimeOffset OccurredOn) : IDomainEvent;
 
-public sealed record DriverAssigned(Guid ShipmentId, Guid DriverId, Guid AssignedByUserId, DateTimeOffset OccurredOn) : IDomainEvent;
+public sealed record DriverAssigned(Guid ShipmentId, Guid DriverId, Guid VehicleId, Guid AssignedByUserId, DateTimeOffset OccurredOn) : IDomainEvent;
 
 public sealed record ShipmentPickedUp(Guid ShipmentId, Guid DriverId, DateTimeOffset OccurredOn) : IDomainEvent;
 

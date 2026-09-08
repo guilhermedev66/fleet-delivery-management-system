@@ -21,6 +21,7 @@ public class ShipmentsModuleBoundaryTests
     private const string ApplicationNamespace = "FleetDelivery.Modules.Shipments.Application";
     private const string InfrastructureNamespace = "FleetDelivery.Modules.Shipments.Infrastructure";
     private const string IdentityInfrastructureNamespace = "FleetDelivery.Modules.Identity.Infrastructure";
+    private const string VehiclesInfrastructureNamespace = "FleetDelivery.Modules.Vehicles.Infrastructure";
 
     [Fact]
     public void Shipments_Domain_should_not_depend_on_Shipments_Infrastructure()
@@ -101,6 +102,52 @@ public class ShipmentsModuleBoundaryTests
             .GetResult();
 
         domainResult.IsSuccessful.Should().BeTrue(BuildFailureMessage(domainResult));
+    }
+
+    /// <summary>
+    /// Same rule as <see cref="Shipments_should_not_depend_on_Identity_Infrastructure"/>,
+    /// for Vehicles: Shipments' <c>AssignCommand</c> validates a vehicleId via
+    /// Vehicles' Application public contract (<c>GetVehicleByIdQuery</c>) but
+    /// must never reach into Vehicles' Infrastructure/internals.
+    /// </summary>
+    [Fact]
+    public void Shipments_should_not_depend_on_Vehicles_Infrastructure()
+    {
+        var result = Types.InAssembly(ApplicationAssembly)
+            .That().ResideInNamespace(ApplicationNamespace)
+            .ShouldNot().HaveDependencyOn(VehiclesInfrastructureNamespace)
+            .GetResult();
+
+        result.IsSuccessful.Should().BeTrue(BuildFailureMessage(result));
+
+        var domainResult = Types.InAssembly(DomainAssembly)
+            .That().ResideInNamespace(DomainNamespace)
+            .ShouldNot().HaveDependencyOn(VehiclesInfrastructureNamespace)
+            .GetResult();
+
+        domainResult.IsSuccessful.Should().BeTrue(BuildFailureMessage(domainResult));
+    }
+
+    /// <summary>The reverse direction: Vehicles never reaches into Shipments' Infrastructure/internals — the dependency only runs Shipments -> Vehicles, never back.</summary>
+    [Fact]
+    public void Vehicles_should_not_depend_on_Shipments_Infrastructure()
+    {
+        var vehiclesDomainAssembly = typeof(FleetDelivery.Modules.Vehicles.Domain.Vehicle).Assembly;
+        var vehiclesApplicationAssembly = typeof(FleetDelivery.Modules.Vehicles.Application.Vehicles.RegisterVehicleCommand).Assembly;
+
+        var domainResult = Types.InAssembly(vehiclesDomainAssembly)
+            .That().ResideInNamespace("FleetDelivery.Modules.Vehicles.Domain")
+            .ShouldNot().HaveDependencyOn(InfrastructureNamespace)
+            .GetResult();
+
+        domainResult.IsSuccessful.Should().BeTrue(BuildFailureMessage(domainResult));
+
+        var applicationResult = Types.InAssembly(vehiclesApplicationAssembly)
+            .That().ResideInNamespace("FleetDelivery.Modules.Vehicles.Application")
+            .ShouldNot().HaveDependencyOn(InfrastructureNamespace)
+            .GetResult();
+
+        applicationResult.IsSuccessful.Should().BeTrue(BuildFailureMessage(applicationResult));
     }
 
     /// <summary>The reverse direction: Identity never reaches into Shipments' Infrastructure/internals either.</summary>

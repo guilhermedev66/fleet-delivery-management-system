@@ -12,5 +12,7 @@ public interface IUserRepository
 
     Task<bool> AnyAsync(CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<User>> ListByRoleAsync(Role role, CancellationToken cancellationToken = default);
+
     void Add(User user);
 }

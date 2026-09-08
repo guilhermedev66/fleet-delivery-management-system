@@ -98,6 +98,8 @@ public sealed class Shipment : AggregateRoot<Guid>
 
     public Guid? AssignedDriverId { get; private set; }
 
+    public Guid? AssignedVehicleId { get; private set; }
+
     public Guid CreatedByUserId { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
@@ -150,12 +152,13 @@ public sealed class Shipment : AggregateRoot<Guid>
         AddDomainEvent(new ShipmentReadyForDispatch(Id, DateTimeOffset.UtcNow));
     }
 
-    /// <summary><c>ReadyForDispatch -> Assigned</c>. Sets <see cref="AssignedDriverId"/>.</summary>
-    public void Assign(Guid driverId, Guid assignedByUserId)
+    /// <summary><c>ReadyForDispatch -> Assigned</c>. Sets <see cref="AssignedDriverId"/> and <see cref="AssignedVehicleId"/>.</summary>
+    public void Assign(Guid driverId, Guid vehicleId, Guid assignedByUserId)
     {
-        TransitionTo(ShipmentStatus.Assigned, "Assigned", assignedByUserId, $"Assigned to driver {driverId}.");
+        TransitionTo(ShipmentStatus.Assigned, "Assigned", assignedByUserId, $"Assigned to driver {driverId} with vehicle {vehicleId}.");
         AssignedDriverId = driverId;
-        AddDomainEvent(new DriverAssigned(Id, driverId, assignedByUserId, DateTimeOffset.UtcNow));
+        AssignedVehicleId = vehicleId;
+        AddDomainEvent(new DriverAssigned(Id, driverId, vehicleId, assignedByUserId, DateTimeOffset.UtcNow));
     }
 
     /// <summary><c>Assigned -> PickedUp</c>. <paramref name="driverId"/> must be the currently assigned driver.</summary>
@@ -220,11 +223,12 @@ public sealed class Shipment : AggregateRoot<Guid>
         AddDomainEvent(new DeliveryFailed(Id, driverId, reason.Trim(), DateTimeOffset.UtcNow));
     }
 
-    /// <summary><c>DeliveryFailed -> Rescheduled</c>. Clears <see cref="AssignedDriverId"/> — goes back to needing dispatch.</summary>
+    /// <summary><c>DeliveryFailed -> Rescheduled</c>. Clears <see cref="AssignedDriverId"/> and <see cref="AssignedVehicleId"/> — goes back to needing dispatch.</summary>
     public void Reschedule(Guid rescheduledByUserId)
     {
         TransitionTo(ShipmentStatus.Rescheduled, "Rescheduled", rescheduledByUserId);
         AssignedDriverId = null;
+        AssignedVehicleId = null;
         AddDomainEvent(new DeliveryRescheduled(Id, rescheduledByUserId, DateTimeOffset.UtcNow));
     }
 

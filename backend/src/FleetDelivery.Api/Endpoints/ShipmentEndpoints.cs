@@ -22,6 +22,7 @@ public static class ShipmentEndpoints
 
         group.MapPost("", CreateShipmentAsync).RequireAuthorization(policy => policy.RequireRole("Dispatcher", "Admin"));
         group.MapGet("", ListShipmentsAsync);
+        group.MapGet("/drivers", ListAvailableDriversAsync).RequireAuthorization(policy => policy.RequireRole("Dispatcher", "Admin"));
         group.MapGet("/{id:guid}", GetShipmentByIdAsync);
         group.MapGet("/{id:guid}/timeline", GetShipmentTimelineAsync);
 
@@ -92,6 +93,13 @@ public static class ShipmentEndpoints
         return result.IsSuccess ? Results.Ok(result.Value.ToResponse()) : MapFailure(result.Error);
     }
 
+    private static async Task<IResult> ListAvailableDriversAsync(ISender sender, CancellationToken cancellationToken)
+    {
+        var result = await sender.Send(new ListAvailableDriversQuery(), cancellationToken);
+
+        return result.IsSuccess ? Results.Ok(result.Value.Select(d => d.ToResponse()).ToList()) : MapFailure(result.Error);
+    }
+
     private static async Task<IResult> GetShipmentByIdAsync(Guid id, ClaimsPrincipal user, ISender sender, CancellationToken cancellationToken)
     {
         if (!TryGetCallerId(user, out var callerId))
@@ -135,7 +143,7 @@ public static class ShipmentEndpoints
             return Results.Unauthorized();
         }
 
-        var result = await sender.Send(new AssignCommand(id, request.DriverId, callerId, request.ExpectedVersion), cancellationToken);
+        var result = await sender.Send(new AssignCommand(id, request.DriverId, request.VehicleId, callerId, request.ExpectedVersion), cancellationToken);
 
         return result.IsSuccess ? Results.Ok(result.Value.ToResponse()) : MapFailure(result.Error);
     }
@@ -273,6 +281,12 @@ public static class ShipmentEndpoints
             detail: error.Message,
             type: "https://fleetdelivery.local/errors/shipment-invalid-driver"),
 
+        "Shipment.InvalidVehicle" => Results.Problem(
+            statusCode: StatusCodes.Status400BadRequest,
+            title: "Invalid vehicle.",
+            detail: error.Message,
+            type: "https://fleetdelivery.local/errors/shipment-invalid-vehicle"),
+
         "Shipment.Validation" => Results.Problem(
             statusCode: StatusCodes.Status400BadRequest,
             title: "Validation error.",
@@ -294,7 +308,7 @@ public sealed record CreateShipmentRequest(string RecipientName, string Recipien
 
 public sealed record ExpectedVersionRequest(int ExpectedVersion);
 
-public sealed record AssignRequest(Guid DriverId, int ExpectedVersion);
+public sealed record AssignRequest(Guid DriverId, Guid VehicleId, int ExpectedVersion);
 
 public sealed record MarkDeliveredRequest(int ExpectedVersion, string? RecipientName, string? Notes);
 
@@ -313,11 +327,14 @@ public sealed record ShipmentResponse(
     AddressResponse Origin,
     AddressResponse Destination,
     Guid? AssignedDriverId,
+    Guid? AssignedVehicleId,
     Guid CreatedByUserId,
     DateTimeOffset CreatedAt,
     int Version);
 
 public sealed record ShipmentListResponse(IReadOnlyList<ShipmentResponse> Items, int Page, int PageSize, int TotalCount);
+
+public sealed record AvailableDriverResponse(Guid Id, string FullName, string Email, bool IsAvailable);
 
 public sealed record TrackingEventResponse(string Type, DateTimeOffset OccurredAt, Guid? ActorUserId, string? Notes);
 
@@ -336,9 +353,12 @@ internal static class ShipmentApiMapping
         dto.Origin.ToResponse(),
         dto.Destination.ToResponse(),
         dto.AssignedDriverId,
+        dto.AssignedVehicleId,
         dto.CreatedByUserId,
         dto.CreatedAt,
         dto.Version);
+
+    public static AvailableDriverResponse ToResponse(this AvailableDriverDto dto) => new(dto.Id, dto.FullName, dto.Email, dto.IsAvailable);
 
     public static ShipmentListResponse ToResponse(this ShipmentListPageDto dto) => new(
         dto.Items.Select(ToResponse).ToList(),

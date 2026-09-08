@@ -19,5 +19,11 @@ public sealed class UserRepository(IdentityDbContext dbContext) : IUserRepositor
     public Task<bool> AnyAsync(CancellationToken cancellationToken = default) =>
         dbContext.Users.AnyAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<User>> ListByRoleAsync(Role role, CancellationToken cancellationToken = default) =>
+        await dbContext.Users
+            .Where(u => u.Role == role)
+            .OrderBy(u => u.FullName)
+            .ToListAsync(cancellationToken);
+
     public void Add(User user) => dbContext.Users.Add(user);
 }

@@ -3,11 +3,13 @@ import { Link, Navigate, useParams } from 'react-router-dom'
 import type { UseMutationResult, UseQueryResult } from '@tanstack/react-query'
 import { ApiError } from '../../lib/api/client'
 import type { Address, ShipmentResponse, ShipmentTimelineResponse } from '../../lib/api/shipments'
+import { useVehicle, useVehicles } from '../vehicles/hooks'
 import { useAuthStore } from '../auth/authStore'
 import {
   useAssignShipment,
   useCancelShipment,
   useDeliverShipment,
+  useDrivers,
   useFailShipment,
   useInTransitShipment,
   useOutForDeliveryShipment,
@@ -60,6 +62,19 @@ function AddressLines({ address }: { address: Address }) {
       </p>
       <p>{address.country}</p>
     </div>
+  )
+}
+
+function AssignedVehicleLine({ vehicleId }: { vehicleId: string }) {
+  const vehicleQuery = useVehicle(vehicleId)
+  if (vehicleQuery.isLoading) return null
+  if (vehicleQuery.isError || !vehicleQuery.data) {
+    return <p className="text-sm text-[var(--color-text-muted)]">Vehicle: {vehicleId}</p>
+  }
+  return (
+    <p className="text-sm text-[var(--color-text-muted)]">
+      Vehicle: {vehicleQuery.data.plateNumber} ({vehicleQuery.data.type})
+    </p>
   )
 }
 
@@ -195,43 +210,80 @@ function RescheduleAction({ shipment }: { shipment: ShipmentResponse }) {
   )
 }
 
-// -- Assign: no real driver directory yet (M3) — a plain text input for the
-// driver's user id, documented as a rough edge. ---------------------------
+// -- Assign: driver + vehicle pickers backed by the M3 driver directory and
+// the Vehicles module. Unavailable drivers and non-Active vehicles are kept
+// visible but disabled so the dispatcher understands why they can't pick
+// them, rather than having them silently disappear from the list. ---------
 
 function AssignAction({ shipment }: { shipment: ShipmentResponse }) {
   const [driverId, setDriverId] = useState('')
+  const [vehicleId, setVehicleId] = useState('')
   const mutation = useAssignShipment(shipment.id)
+  const driversQuery = useDrivers()
+  const vehiclesQuery = useVehicles({ status: 'Active' })
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!driverId.trim()) return
-    mutation.mutate({ driverId: driverId.trim(), expectedVersion: shipment.version })
+    if (!driverId || !vehicleId) return
+    mutation.mutate({ driverId, vehicleId, expectedVersion: shipment.version })
   }
 
   return (
     <form onSubmit={handleSubmit} className={ACTION_CARD_CLASS}>
-      <label htmlFor="assign-driver-id" className="text-sm font-medium">
-        Assign to driver (user id)
-      </label>
-      <p className="text-xs text-[var(--color-text-muted)]">
-        No driver directory yet (M3) — paste the driver's user id directly.
-      </p>
-      <div className="flex flex-wrap gap-2">
-        <input
-          id="assign-driver-id"
+      <div className="flex flex-col gap-1">
+        <label htmlFor="assign-driver" className="text-sm font-medium">
+          Driver
+        </label>
+        <select
+          id="assign-driver"
           value={driverId}
           onChange={(event) => setDriverId(event.target.value)}
-          placeholder="Driver user id"
-          className={`min-w-0 flex-1 ${FIELD_CLASS}`}
-        />
-        <button
-          type="submit"
-          disabled={mutation.isPending || !driverId.trim()}
-          className={ACTION_BUTTON_CLASS}
+          disabled={driversQuery.isLoading}
+          className={FIELD_CLASS}
         >
-          {mutation.isPending ? 'Assigning…' : 'Assign'}
-        </button>
+          <option value="">Select a driver…</option>
+          {driversQuery.data?.map((driver) => (
+            <option key={driver.id} value={driver.id} disabled={!driver.isAvailable}>
+              {driver.fullName} ({driver.email})
+              {!driver.isAvailable ? ' — currently on a delivery' : ''}
+            </option>
+          ))}
+        </select>
+        {driversQuery.isError && (
+          <p className="text-xs text-[var(--color-danger)]">Couldn't load drivers.</p>
+        )}
       </div>
+
+      <div className="flex flex-col gap-1">
+        <label htmlFor="assign-vehicle" className="text-sm font-medium">
+          Vehicle
+        </label>
+        <select
+          id="assign-vehicle"
+          value={vehicleId}
+          onChange={(event) => setVehicleId(event.target.value)}
+          disabled={vehiclesQuery.isLoading}
+          className={FIELD_CLASS}
+        >
+          <option value="">Select a vehicle…</option>
+          {vehiclesQuery.data?.items.map((vehicle) => (
+            <option key={vehicle.id} value={vehicle.id}>
+              {vehicle.plateNumber} ({vehicle.type})
+            </option>
+          ))}
+        </select>
+        {vehiclesQuery.isError && (
+          <p className="text-xs text-[var(--color-danger)]">Couldn't load vehicles.</p>
+        )}
+      </div>
+
+      <button
+        type="submit"
+        disabled={mutation.isPending || !driverId || !vehicleId}
+        className={`w-fit ${ACTION_BUTTON_CLASS}`}
+      >
+        {mutation.isPending ? 'Assigning…' : 'Assign'}
+      </button>
       <ActionError error={mutation.error} />
     </form>
   )
@@ -438,6 +490,9 @@ export function ShipmentDetailPage() {
         </DetailCard>
         <DetailCard title="Assigned driver">
           <p className="text-sm">{shipment.assignedDriverId ?? 'Not yet assigned'}</p>
+          {shipment.assignedVehicleId && (
+            <AssignedVehicleLine vehicleId={shipment.assignedVehicleId} />
+          )}
         </DetailCard>
         <DetailCard title="Origin">
           <AddressLines address={shipment.origin} />

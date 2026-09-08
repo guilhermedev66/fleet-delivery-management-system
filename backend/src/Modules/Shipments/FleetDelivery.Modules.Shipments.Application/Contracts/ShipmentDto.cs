@@ -11,6 +11,7 @@ public sealed record ShipmentDto(
     AddressDto Origin,
     AddressDto Destination,
     Guid? AssignedDriverId,
+    Guid? AssignedVehicleId,
     Guid CreatedByUserId,
     DateTimeOffset CreatedAt,
     int Version);
@@ -20,3 +21,5 @@ public sealed record TrackingEventDto(string Type, DateTimeOffset OccurredAt, Gu
 public sealed record ShipmentTimelineDto(IReadOnlyList<TrackingEventDto> Events);
 
 public sealed record ShipmentListPageDto(IReadOnlyList<ShipmentDto> Items, int Page, int PageSize, int TotalCount);
+
+public sealed record AvailableDriverDto(Guid Id, string FullName, string Email, bool IsAvailable);

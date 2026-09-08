@@ -23,5 +23,9 @@ public static class ShipmentErrors
         "Shipment.InvalidDriver",
         "The specified driverId does not reference an active user with the Driver role.");
 
+    public static readonly Error InvalidVehicle = new(
+        "Shipment.InvalidVehicle",
+        "The specified vehicleId does not reference an Active vehicle.");
+
     public static Error Validation(string message) => new("Shipment.Validation", message);
 }

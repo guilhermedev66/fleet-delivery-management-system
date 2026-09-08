@@ -95,15 +95,24 @@ state machine, not written separately.
 
 ### "A driver" is just an Identity `User` with `Role.Driver`
 
-There is no separate Drivers module yet — that's M3 (license, capacity, and
-other driver-profile data). For M2, `Shipment.AssignedDriverId` is a plain
-`Guid` referencing `identity.users.id`, with **no cross-schema foreign key**
-(per the modular-monolith rule: cross-module references are plain IDs,
-validated at the application layer, never DB-enforced). `AssignCommand`
-validates a `driverId` by calling Identity's own Application public contract
-(`GetCurrentUserQuery`, sent via MediatR's `ISender`) rather than querying
-the `identity` schema directly — the in-process cross-module call style from
-docs/ARCHITECTURE.md. Driver-only endpoints (`pickup`, `in-transit`,
+There is no separate Drivers module yet — that's a later milestone (license,
+capacity, and other driver-profile data). For now, `Shipment.AssignedDriverId`
+is a plain `Guid` referencing `identity.users.id`, with **no cross-schema
+foreign key** (per the modular-monolith rule: cross-module references are
+plain IDs, validated at the application layer, never DB-enforced).
+`AssignCommand` validates a `driverId` by calling Identity's own Application
+public contract (`GetCurrentUserQuery`, sent via MediatR's `ISender`) rather
+than querying the `identity` schema directly — the in-process cross-module
+call style from docs/ARCHITECTURE.md. `AssignCommand` validates `vehicleId`
+the same way, against the Vehicles module's own Application public contract
+(`GetVehicleByIdQuery`), rejecting anything that isn't an `Active` vehicle —
+see the [Vehicles module](#vehicles-module) section below.
+`GET /api/shipments/drivers` backs the dispatcher's driver picker: every
+`Role.Driver` user, each flagged `isAvailable: false` if they're currently
+assigned to a shipment that's been dispatched but not yet finished
+(`Assigned`/`PickedUp`/`InTransit`/`OutForDelivery`) — kept in the list
+rather than filtered out, so the UI can show *why* a driver can't be picked.
+Driver-only endpoints (`pickup`, `in-transit`,
 `out-for-delivery`, `deliver`, `fail`) authorize by comparing the JWT's `sub`
 claim against `Shipment.AssignedDriverId`, both inside the domain method
 (`Shipment.MarkPickedUp` etc. throw `ShipmentDriverMismatchException`) and
@@ -123,8 +132,9 @@ shouldn't see it.
 | `GET /api/shipments` | any | Paged, optional `status`/`driverId` filter; a Driver's own filter is always server-forced, ignoring any client-supplied `driverId` |
 | `GET /api/shipments/{id}` | any | 404 (not 403) if a Driver requests one not assigned to them |
 | `GET /api/shipments/{id}/timeline` | any | Same ownership rule as above |
+| `GET /api/shipments/drivers` | Dispatcher, Admin | Every Driver, each with `isAvailable` — see above |
 | `POST /api/shipments/{id}/ready-for-dispatch` | Dispatcher, Admin | Serves both `Draft -> ReadyForDispatch` and `Rescheduled -> ReadyForDispatch` — see the doc comment on `ReadyForDispatchCommand` |
-| `POST /api/shipments/{id}/assign` | Dispatcher, Admin | Body: `{ driverId, expectedVersion }` |
+| `POST /api/shipments/{id}/assign` | Dispatcher, Admin | Body: `{ driverId, vehicleId, expectedVersion }` |
 | `POST /api/shipments/{id}/pickup` | Driver | Body: `{ expectedVersion }` |
 | `POST /api/shipments/{id}/in-transit` | Driver | Body: `{ expectedVersion }` |
 | `POST /api/shipments/{id}/out-for-delivery` | Driver | Body: `{ expectedVersion }` |
@@ -178,6 +188,45 @@ dotnet ef migrations add <Name> \
 
 No dev seed for this module — there's no meaningful default shipment to
 create automatically the way there's a default Admin user.
+
+## Vehicles module
+
+Owns the `vehicles` Postgres schema exclusively via `VehiclesDbContext`.
+Currently create-and-read only: `Vehicle.Register` (plate number, type,
+capacity) always starts a vehicle `Active` — there's no
+send-to-maintenance/retire workflow yet because nothing in the product needs
+one (dispatch only reads `Status` to offer `Active` vehicles for assignment).
+See the doc comment on
+[`Vehicle`](src/Modules/Vehicles/FleetDelivery.Modules.Vehicles.Domain/Vehicle.cs)
+for why a status-transition method was deliberately left out rather than
+speculatively adding a public setter.
+
+Plate numbers are normalized (trimmed, upper-cased) and enforced unique at
+the DB level (`ix_vehicles_plate_number`) — the real invariant, with
+`IVehicleRepository.ExistsByPlateNumberAsync` only a friendly fast-path in
+front of it; a race that slips past the fast-path surfaces as a Postgres
+unique-violation, translated by `VehiclesDbContext.SaveChangesAsync` into a
+409, not a raw 500. No Outbox wiring here (unlike Identity/Shipments) —
+nothing downstream needs a `VehicleRegistered` integration event yet; add it
+if a real consumer shows up instead of wiring an unused table now.
+
+### Endpoints (`/api/vehicles`)
+
+| Method & path | Roles | Notes |
+|---|---|---|
+| `GET /api/vehicles` | any | Optional `status` filter (`Active`/`Maintenance`/`Retired`) |
+| `GET /api/vehicles/{id}` | any | 404 if unknown |
+| `POST /api/vehicles` | Dispatcher, Admin | Body: `{ plateNumber, type, capacityKg }`; 409 on a duplicate plate number |
+
+### Vehicles module — EF Core migrations
+
+```bash
+cd backend
+dotnet ef database update \
+  --project src/Modules/Vehicles/FleetDelivery.Modules.Vehicles.Infrastructure/FleetDelivery.Modules.Vehicles.Infrastructure.csproj \
+  --startup-project src/FleetDelivery.Api/FleetDelivery.Api.csproj \
+  --context VehiclesDbContext
+```
 
 ## Required configuration
 
@@ -241,27 +290,38 @@ dotnet test FleetDelivery.sln
   event, invalid ones throw `InvalidShipmentTransitionException`, a
   driver-owned transition with the wrong `driverId` throws
   `ShipmentDriverMismatchException`, `Cancel` rejects once `PickedUp`,
-  `Delivered` rejects every further transition). No external dependencies.
-- **`FleetDelivery.ArchitectureTests`** — NetArchTest rules: Identity.Domain
-  and Shipments.Domain have no dependency on their own module's
-  Infrastructure, ASP.NET Core, or EF Core; Identity.Application and
-  Shipments.Application have no dependency on their own module's
-  Infrastructure; Identity and Shipments never depend on each other's
-  Infrastructure either (both may depend on BuildingBlocks).
+  `Delivered` rejects every further transition); `Vehicle.Register`'s
+  validation (normalizes the plate number, rejects an empty one or a
+  non-positive capacity). No external dependencies.
+- **`FleetDelivery.ArchitectureTests`** — NetArchTest rules: Identity.Domain,
+  Shipments.Domain, and Vehicles.Domain have no dependency on their own
+  module's Infrastructure, ASP.NET Core, or EF Core; same for each module's
+  Application layer; Identity, Shipments, and Vehicles never depend on each
+  other's Infrastructure either (all may depend on BuildingBlocks) —
+  including the one real cross-module Application call each way
+  (Shipments -> Identity for driver validation, Shipments -> Vehicles for
+  vehicle validation; Vehicles itself makes no cross-module calls).
 - **`FleetDelivery.IntegrationTests`** — `Testcontainers.PostgreSql` spins up
   a real, disposable Postgres per test class; `Microsoft.AspNetCore.Mvc.Testing`'s
   `WebApplicationFactory` runs the real `FleetDelivery.Api` host (in the
   `Development` environment, so its own auto-migrate + dev-seed path sets up
-  both schemas and the admin user) against it, and tests hit the real
-  `/api/auth/*` and `/api/shipments/*` endpoints over HTTP. The Shipments
-  suite (`ShipmentEndpointsTests`) drives a shipment through its full
-  lifecycle with real JWTs for a Dispatcher and a Driver seeded via
+  all three schemas and the admin user) against it, and tests hit the real
+  `/api/auth/*`, `/api/shipments/*`, and `/api/vehicles/*` endpoints over
+  HTTP. The Shipments suite (`ShipmentEndpointsTests`) drives a shipment
+  through its full lifecycle — including a real driver+vehicle assignment,
+  registering an `Active` vehicle via the real `/api/vehicles` endpoint first
+  — with real JWTs for a Dispatcher and a Driver seeded via
   `ShipmentsApiFactory.CreateUserAsync`; asserts a Driver acting on (or even
   viewing) a shipment not assigned to them gets a real 404; asserts a stale
   `expectedVersion` gets a real 409 (an actual two-write race against
-  Postgres, not a mock); and asserts a state transition leaves a matching row
-  in `shipments.outbox_messages` in the same call. **Requires a working
-  Docker daemon** — if `docker info` doesn't work in your environment, these
+  Postgres, not a mock); asserts assigning a nonexistent `vehicleId` gets a
+  real 400; asserts `GET /api/shipments/drivers` correctly marks a driver
+  unavailable once assigned to an in-progress shipment; and asserts a state
+  transition leaves a matching row in `shipments.outbox_messages` in the
+  same call. The Vehicles suite (`VehicleEndpointsTests`) covers
+  register-then-read-back, RBAC (a Driver can't register), a duplicate plate
+  number returning 409, and an unknown id returning 404. **Requires a
+  working Docker daemon** — if `docker info` doesn't work in your environment, these
   won't be able to start their container. (In WSL specifically: Testcontainers
   can find a usable daemon via Docker Desktop's WSL2 integration socket even
   without that particular distro checked in Docker Desktop's "Resources → WSL

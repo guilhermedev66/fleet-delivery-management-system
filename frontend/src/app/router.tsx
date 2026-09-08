@@ -5,6 +5,8 @@ import { LoginPage } from '../features/auth/LoginPage'
 import { CreateShipmentPage } from '../features/shipments/CreateShipmentPage'
 import { ShipmentDetailPage } from '../features/shipments/ShipmentDetailPage'
 import { ShipmentsListPage } from '../features/shipments/ShipmentsListPage'
+import { RegisterVehiclePage } from '../features/vehicles/RegisterVehiclePage'
+import { VehiclesListPage } from '../features/vehicles/VehiclesListPage'
 import { AppShell } from './AppShell'
 import { ProtectedRoute } from './ProtectedRoute'
 
@@ -26,7 +28,8 @@ export const router = createBrowserRouter([
           { path: 'dispatch', element: <PlaceholderPage title="Dispatch Board" /> },
           { path: 'routes', element: <PlaceholderPage title="Routes" /> },
           { path: 'drivers', element: <PlaceholderPage title="Drivers" /> },
-          { path: 'vehicles', element: <PlaceholderPage title="Vehicles" /> },
+          { path: 'vehicles', element: <VehiclesListPage /> },
+          { path: 'vehicles/new', element: <RegisterVehiclePage /> },
           { path: 'tracking', element: <PlaceholderPage title="Tracking" /> },
           { path: 'incidents', element: <PlaceholderPage title="Incidents" /> },
           { path: 'reports', element: <PlaceholderPage title="Reports" /> },

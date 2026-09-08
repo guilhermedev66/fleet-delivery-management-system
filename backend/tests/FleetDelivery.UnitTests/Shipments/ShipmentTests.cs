@@ -49,7 +49,7 @@ public class ShipmentTests
         var shipment = CreateDraftShipment();
 
         shipment.MarkReadyForDispatch(Guid.NewGuid());
-        shipment.Assign(driver, dispatcher);
+        shipment.Assign(driver, Guid.NewGuid(), dispatcher);
         shipment.MarkPickedUp(driver);
         shipment.MarkInTransit(driver);
         shipment.MarkOutForDelivery(driver);
@@ -57,6 +57,7 @@ public class ShipmentTests
 
         shipment.Status.Should().Be(ShipmentStatus.Delivered);
         shipment.AssignedDriverId.Should().Be(driver);
+        shipment.AssignedVehicleId.Should().NotBeNull();
         shipment.Version.Should().Be(6); // Created doesn't bump Version, the 6 transitions above do.
         shipment.TrackingEvents.Select(e => e.Type).Should().Equal(
             "Created", "ReadyForDispatch", "Assigned", "PickedUp", "InTransit", "OutForDelivery", "Delivered");
@@ -90,7 +91,7 @@ public class ShipmentTests
         var driver = Guid.NewGuid();
         var shipment = CreateDraftShipment();
         shipment.MarkReadyForDispatch(Guid.NewGuid());
-        shipment.Assign(driver, Guid.NewGuid());
+        shipment.Assign(driver, Guid.NewGuid(), Guid.NewGuid());
         shipment.MarkPickedUp(driver);
         shipment.MarkInTransit(driver);
         shipment.MarkOutForDelivery(driver);
@@ -118,7 +119,7 @@ public class ShipmentTests
 
         if (fromStatus is ShipmentStatus.Assigned)
         {
-            shipment.Assign(driver, Guid.NewGuid());
+            shipment.Assign(driver, Guid.NewGuid(), Guid.NewGuid());
         }
 
         shipment.Cancel(Guid.NewGuid(), "customer request");
@@ -133,7 +134,7 @@ public class ShipmentTests
         var driver = Guid.NewGuid();
         var shipment = CreateDraftShipment();
         shipment.MarkReadyForDispatch(Guid.NewGuid());
-        shipment.Assign(driver, Guid.NewGuid());
+        shipment.Assign(driver, Guid.NewGuid(), Guid.NewGuid());
         shipment.MarkPickedUp(driver);
 
         var act = () => shipment.Cancel(Guid.NewGuid(), "too late now");
@@ -148,7 +149,7 @@ public class ShipmentTests
         var someoneElse = Guid.NewGuid();
         var shipment = CreateDraftShipment();
         shipment.MarkReadyForDispatch(Guid.NewGuid());
-        shipment.Assign(assignedDriver, Guid.NewGuid());
+        shipment.Assign(assignedDriver, Guid.NewGuid(), Guid.NewGuid());
 
         var act = () => shipment.MarkPickedUp(someoneElse);
 
@@ -163,7 +164,7 @@ public class ShipmentTests
         var someoneElse = Guid.NewGuid();
         var shipment = CreateDraftShipment();
         shipment.MarkReadyForDispatch(Guid.NewGuid());
-        shipment.Assign(assignedDriver, Guid.NewGuid());
+        shipment.Assign(assignedDriver, Guid.NewGuid(), Guid.NewGuid());
         shipment.MarkPickedUp(assignedDriver);
 
         FluentActions.Invoking(() => shipment.MarkInTransit(someoneElse)).Should().Throw<ShipmentDriverMismatchException>();
@@ -180,7 +181,7 @@ public class ShipmentTests
         var someoneElse = Guid.NewGuid();
         var shipment = CreateDraftShipment();
         shipment.MarkReadyForDispatch(Guid.NewGuid());
-        shipment.Assign(assignedDriver, Guid.NewGuid());
+        shipment.Assign(assignedDriver, Guid.NewGuid(), Guid.NewGuid());
         shipment.MarkPickedUp(assignedDriver);
         shipment.MarkInTransit(assignedDriver);
         shipment.MarkOutForDelivery(assignedDriver);
@@ -197,7 +198,7 @@ public class ShipmentTests
         var driver = Guid.NewGuid();
         var shipment = CreateDraftShipment();
         shipment.MarkReadyForDispatch(Guid.NewGuid());
-        shipment.Assign(driver, Guid.NewGuid());
+        shipment.Assign(driver, Guid.NewGuid(), Guid.NewGuid());
         shipment.MarkPickedUp(driver);
         shipment.MarkInTransit(driver);
         shipment.MarkOutForDelivery(driver);
@@ -215,7 +216,7 @@ public class ShipmentTests
         var driver = Guid.NewGuid();
         var shipment = CreateDraftShipment();
         shipment.MarkReadyForDispatch(Guid.NewGuid());
-        shipment.Assign(driver, Guid.NewGuid());
+        shipment.Assign(driver, Guid.NewGuid(), Guid.NewGuid());
         shipment.MarkPickedUp(driver);
         shipment.MarkInTransit(driver);
         shipment.MarkOutForDelivery(driver);
@@ -225,6 +226,7 @@ public class ShipmentTests
 
         shipment.Status.Should().Be(ShipmentStatus.Rescheduled);
         shipment.AssignedDriverId.Should().BeNull();
+        shipment.AssignedVehicleId.Should().BeNull();
 
         shipment.BackToReadyForDispatch(Guid.NewGuid());
 
@@ -238,7 +240,7 @@ public class ShipmentTests
 
         var shipmentFromFailed = CreateDraftShipment();
         shipmentFromFailed.MarkReadyForDispatch(Guid.NewGuid());
-        shipmentFromFailed.Assign(driver, Guid.NewGuid());
+        shipmentFromFailed.Assign(driver, Guid.NewGuid(), Guid.NewGuid());
         shipmentFromFailed.MarkPickedUp(driver);
         shipmentFromFailed.MarkInTransit(driver);
         shipmentFromFailed.MarkOutForDelivery(driver);
@@ -248,7 +250,7 @@ public class ShipmentTests
 
         var shipmentFromRescheduled = CreateDraftShipment();
         shipmentFromRescheduled.MarkReadyForDispatch(Guid.NewGuid());
-        shipmentFromRescheduled.Assign(driver, Guid.NewGuid());
+        shipmentFromRescheduled.Assign(driver, Guid.NewGuid(), Guid.NewGuid());
         shipmentFromRescheduled.MarkPickedUp(driver);
         shipmentFromRescheduled.MarkInTransit(driver);
         shipmentFromRescheduled.MarkOutForDelivery(driver);

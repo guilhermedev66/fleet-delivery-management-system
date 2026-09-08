@@ -14,6 +14,7 @@ internal static class ShipmentMapper
         shipment.OriginAddress.ToDto(),
         shipment.DestinationAddress.ToDto(),
         shipment.AssignedDriverId,
+        shipment.AssignedVehicleId,
         shipment.CreatedByUserId,
         shipment.CreatedAt,
         shipment.Version);

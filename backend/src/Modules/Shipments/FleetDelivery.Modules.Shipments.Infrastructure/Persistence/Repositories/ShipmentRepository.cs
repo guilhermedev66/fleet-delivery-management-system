@@ -41,5 +41,20 @@ public sealed class ShipmentRepository(ShipmentsDbContext dbContext) : IShipment
         return (items, totalCount);
     }
 
+    private static readonly ShipmentStatus[] BusyStatuses =
+    [
+        ShipmentStatus.Assigned,
+        ShipmentStatus.PickedUp,
+        ShipmentStatus.InTransit,
+        ShipmentStatus.OutForDelivery,
+    ];
+
+    public async Task<IReadOnlyCollection<Guid>> GetBusyDriverIdsAsync(CancellationToken cancellationToken = default) =>
+        await dbContext.Shipments
+            .Where(s => s.AssignedDriverId != null && BusyStatuses.Contains(s.Status))
+            .Select(s => s.AssignedDriverId!.Value)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
     public void Add(Shipment shipment) => dbContext.Shipments.Add(shipment);
 }

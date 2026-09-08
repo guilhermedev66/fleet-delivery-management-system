@@ -22,6 +22,12 @@
       repository/DbContext reference into Identity's schema.
     -->
     <ProjectReference Include="..\..\Identity\FleetDelivery.Modules.Identity.Application\FleetDelivery.Modules.Identity.Application.csproj" />
+    <!--
+      Same in-process cross-module call style, this time to Vehicles'
+      Application layer, to validate that a vehicleId assigned to a shipment
+      actually references an Active vehicle.
+    -->
+    <ProjectReference Include="..\..\Vehicles\FleetDelivery.Modules.Vehicles.Application\FleetDelivery.Modules.Vehicles.Application.csproj" />
   </ItemGroup>
 
 </Project>

@@ -39,6 +39,7 @@ public sealed class ShipmentEndpointsTests : IClassFixture<ShipmentsApiFactory>
 
         var dispatcherToken = await LoginAsync(client, dispatcherEmail, dispatcherPassword);
         var driverToken = await LoginAsync(client, driverEmail, driverPassword);
+        var vehicleId = await RegisterVehicleAsync(client, dispatcherToken);
 
         var shipment = await CreateShipmentAsync(client, dispatcherToken);
         shipment.Status.Should().Be("Draft");
@@ -47,9 +48,10 @@ public sealed class ShipmentEndpointsTests : IClassFixture<ShipmentsApiFactory>
         shipment = (await PostAsync(client, $"/api/shipments/{shipment.Id}/ready-for-dispatch", dispatcherToken, new ExpectedVersionRequest(shipment.Version)))!;
         shipment.Status.Should().Be("ReadyForDispatch");
 
-        shipment = (await PostAsync(client, $"/api/shipments/{shipment.Id}/assign", dispatcherToken, new AssignRequest(driverId, shipment.Version)))!;
+        shipment = (await PostAsync(client, $"/api/shipments/{shipment.Id}/assign", dispatcherToken, new AssignRequest(driverId, vehicleId, shipment.Version)))!;
         shipment.Status.Should().Be("Assigned");
         shipment.AssignedDriverId.Should().Be(driverId);
+        shipment.AssignedVehicleId.Should().Be(vehicleId);
 
         shipment = (await PostAsync(client, $"/api/shipments/{shipment.Id}/pickup", driverToken, new ExpectedVersionRequest(shipment.Version)))!;
         shipment.Status.Should().Be("PickedUp");
@@ -180,6 +182,50 @@ public sealed class ShipmentEndpointsTests : IClassFixture<ShipmentsApiFactory>
     }
 
     [Fact]
+    public async Task Assigning_a_nonexistent_vehicle_returns_400_with_an_invalid_vehicle_error_type()
+    {
+        var client = CreateClient();
+        var (_, dispatcherEmail, dispatcherPassword) = await _factory.CreateUserAsync(Role.Dispatcher);
+        var (driverId, _, _) = await _factory.CreateUserAsync(Role.Driver);
+        var dispatcherToken = await LoginAsync(client, dispatcherEmail, dispatcherPassword);
+
+        var shipment = await CreateShipmentAsync(client, dispatcherToken);
+        shipment = (await PostAsync(client, $"/api/shipments/{shipment.Id}/ready-for-dispatch", dispatcherToken, new ExpectedVersionRequest(shipment.Version)))!;
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/shipments/{shipment.Id}/assign")
+        {
+            Content = JsonContent.Create(new AssignRequest(driverId, Guid.NewGuid(), shipment.Version)),
+        };
+        Authorize(request, dispatcherToken);
+        var response = await client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        problem!.Type.Should().Contain("invalid-vehicle");
+    }
+
+    [Fact]
+    public async Task Available_drivers_list_marks_a_driver_unavailable_once_assigned_to_an_in_progress_shipment()
+    {
+        var client = CreateClient();
+        var (_, dispatcherEmail, dispatcherPassword) = await _factory.CreateUserAsync(Role.Dispatcher);
+        var (busyDriverId, _, _) = await _factory.CreateUserAsync(Role.Driver);
+        var (freeDriverId, _, _) = await _factory.CreateUserAsync(Role.Driver);
+        var dispatcherToken = await LoginAsync(client, dispatcherEmail, dispatcherPassword);
+
+        await CreateReadyAndAssignedShipmentAsync(client, dispatcherToken, busyDriverId);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/shipments/drivers");
+        Authorize(request, dispatcherToken);
+        var response = await client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var drivers = await response.Content.ReadFromJsonAsync<List<AvailableDriverResponse>>();
+        drivers!.Should().Contain(d => d.Id == busyDriverId && !d.IsAvailable);
+        drivers!.Should().Contain(d => d.Id == freeDriverId && d.IsAvailable);
+    }
+
+    [Fact]
     public async Task A_transition_writes_an_outbox_row_in_the_same_call_as_the_state_change()
     {
         var client = CreateClient();
@@ -218,11 +264,27 @@ public sealed class ShipmentEndpointsTests : IClassFixture<ShipmentsApiFactory>
 
     private async Task<ShipmentResponse> CreateReadyAndAssignedShipmentAsync(HttpClient client, string dispatcherToken, Guid driverId)
     {
+        var vehicleId = await RegisterVehicleAsync(client, dispatcherToken);
+
         var shipment = await CreateShipmentAsync(client, dispatcherToken);
         shipment = (await PostAsync(client, $"/api/shipments/{shipment.Id}/ready-for-dispatch", dispatcherToken, new ExpectedVersionRequest(shipment.Version)))!;
-        shipment = (await PostAsync(client, $"/api/shipments/{shipment.Id}/assign", dispatcherToken, new AssignRequest(driverId, shipment.Version)))!;
+        shipment = (await PostAsync(client, $"/api/shipments/{shipment.Id}/assign", dispatcherToken, new AssignRequest(driverId, vehicleId, shipment.Version)))!;
 
         return shipment;
+    }
+
+    /// <summary>Registers an Active vehicle via the real <c>/api/vehicles</c> endpoint and returns its id, for tests that need a valid <c>vehicleId</c> to assign.</summary>
+    private static async Task<Guid> RegisterVehicleAsync(HttpClient client, string dispatcherToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/vehicles")
+        {
+            Content = JsonContent.Create(new RegisterVehicleRequest($"T-{Guid.NewGuid():N}"[..12].ToUpperInvariant(), "Van", 500m)),
+        };
+        Authorize(request, dispatcherToken);
+        var response = await client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        return (await response.Content.ReadFromJsonAsync<VehicleResponse>())!.Id;
     }
 
     private static async Task<ShipmentResponse?> PostAsync<TRequest>(HttpClient client, string url, string accessToken, TRequest body)

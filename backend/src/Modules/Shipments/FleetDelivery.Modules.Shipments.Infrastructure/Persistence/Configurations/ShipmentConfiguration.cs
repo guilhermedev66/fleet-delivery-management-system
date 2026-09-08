@@ -75,6 +75,9 @@ public sealed class ShipmentConfiguration : IEntityTypeConfiguration<Shipment>
         builder.Property(s => s.AssignedDriverId)
             .HasColumnName("assigned_driver_id");
 
+        builder.Property(s => s.AssignedVehicleId)
+            .HasColumnName("assigned_vehicle_id");
+
         builder.Property(s => s.CreatedByUserId)
             .HasColumnName("created_by_user_id")
             .IsRequired();

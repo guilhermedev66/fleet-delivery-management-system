@@ -67,6 +67,10 @@ namespace FleetDelivery.Modules.Shipments.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("assigned_driver_id");
 
+                    b.Property<Guid?>("AssignedVehicleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("assigned_vehicle_id");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");

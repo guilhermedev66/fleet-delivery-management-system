@@ -8,6 +8,7 @@ import {
   getShipment,
   getShipmentTimeline,
   inTransitShipment,
+  listDrivers,
   listShipments,
   outForDeliveryShipment,
   pickupShipment,
@@ -85,11 +86,25 @@ export function useReadyForDispatch(id: string) {
   })
 }
 
+export function useDrivers() {
+  return useQuery({
+    queryKey: ['shipments', 'drivers'] as const,
+    queryFn: listDrivers,
+  })
+}
+
 export function useAssignShipment(id: string) {
   const invalidate = useInvalidateShipment(id)
   return useMutation({
-    mutationFn: ({ driverId, expectedVersion }: { driverId: string; expectedVersion: string }) =>
-      assignShipment(id, driverId, expectedVersion),
+    mutationFn: ({
+      driverId,
+      vehicleId,
+      expectedVersion,
+    }: {
+      driverId: string
+      vehicleId: string
+      expectedVersion: string
+    }) => assignShipment(id, driverId, vehicleId, expectedVersion),
     onSettled: invalidate,
   })
 }

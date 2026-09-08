@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MediatR" Version="14.2.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\FleetDelivery.BuildingBlocks\FleetDelivery.BuildingBlocks.csproj" />
+    <ProjectReference Include="..\FleetDelivery.Modules.Vehicles.Domain\FleetDelivery.Modules.Vehicles.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

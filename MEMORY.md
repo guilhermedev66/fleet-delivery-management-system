@@ -90,6 +90,34 @@ Only what's expensive to re-derive. Not a changelog.
   Revisit only if free-tier limits are actually hit during production
   validation (M7).
 
+## Vehicles module (added after M2)
+
+- Vehicles is create-and-read only by design: `Vehicle.Register` always
+  starts `Active`, no status-transition method exists yet. Don't add one
+  speculatively — wait for a real "send to maintenance"/"retire" UI need,
+  then give it the same explicit-transition-table treatment as `Shipment`.
+- No Outbox wiring on `VehiclesDbContext` (unlike Identity/Shipments) —
+  nothing downstream consumes a `VehicleRegistered` event yet. Add it only
+  when a real consumer shows up.
+- Plate numbers are normalized (trim + upper-invariant) in `Vehicle.Register`
+  and enforced unique via a DB index (`ix_vehicles_plate_number`). A
+  duplicate is checked both as a repository pre-check (friendly error, fast
+  path) *and* as a Postgres unique-violation caught in
+  `VehiclesDbContext.SaveChangesAsync` and translated to
+  `DuplicatePlateNumberException` (race-safe backstop) — the DB constraint is
+  the actual invariant, the pre-check is just UX.
+- Shipment assignment now validates **both** driverId (existing, via
+  Identity's `GetCurrentUserQuery`) and vehicleId (via Vehicles'
+  `GetVehicleByIdQuery`, must be `Active`) — same in-process cross-module
+  call style both times, never a direct cross-schema query.
+- `GET /api/shipments/drivers` lives in the *Shipments* module (not
+  Identity) since "which drivers, and are they free for a new assignment" is
+  a Shipments-domain question — it calls Identity's `ListDriversQuery` for
+  the roster, then cross-references `IShipmentRepository.GetBusyDriverIdsAsync`
+  (busy = assigned to a shipment in `Assigned`/`PickedUp`/`InTransit`/`OutForDelivery`)
+  to compute `isAvailable`. Busy drivers stay in the list (disabled in the
+  UI with a reason), never silently filtered out.
+
 ## Full spec
 
 The complete product/architecture brief for this project lives in the

@@ -15,5 +15,8 @@ public interface IShipmentRepository
         Guid? assignedDriverId,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Driver ids currently assigned to a shipment that's been dispatched but not yet finished (<see cref="ShipmentStatus.Assigned"/>, <see cref="ShipmentStatus.PickedUp"/>, <see cref="ShipmentStatus.InTransit"/>, or <see cref="ShipmentStatus.OutForDelivery"/>) — used to mark a driver "on a delivery" in the assign picker.</summary>
+    Task<IReadOnlyCollection<Guid>> GetBusyDriverIdsAsync(CancellationToken cancellationToken = default);
+
     void Add(Shipment shipment);
 }

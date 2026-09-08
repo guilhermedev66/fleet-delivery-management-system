@@ -4,9 +4,9 @@ A logistics operations platform for dispatching shipments, tracking
 deliveries in real time, and managing drivers, vehicles, and routes —
 built to demonstrate a real event-driven backend, not another CRUD app.
 
-> Status: **in development (M2 — shipment & delivery lifecycle)**. Auth/RBAC,
-> CI, Docker, and the app shell are in place. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-> for the full design.
+> Status: **in development (shipment & delivery lifecycle, fleet vehicle
+> registry)**. Auth/RBAC, CI, Docker, and the app shell are in place. See
+> [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design.
 
 ## Overview
 
@@ -40,6 +40,8 @@ Vitest, React Testing Library.
 ## Key features
 
 - Explicit shipment/delivery state machine with optimistic concurrency
+- Fleet vehicle registry (register/list/filter), server-validated on
+  dispatch assignment alongside driver availability
 - Transactional Outbox pattern for reliable event publishing
 - Idempotent RabbitMQ consumers (inbox pattern) with retry + DLQ
 - Concurrency-safe dispatch (driver + vehicle assignment)

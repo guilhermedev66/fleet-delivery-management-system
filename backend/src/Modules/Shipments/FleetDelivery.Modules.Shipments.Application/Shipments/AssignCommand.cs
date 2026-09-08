@@ -3,19 +3,22 @@ using FleetDelivery.Modules.Identity.Application.Users;
 using FleetDelivery.Modules.Shipments.Application.Abstractions;
 using FleetDelivery.Modules.Shipments.Application.Contracts;
 using FleetDelivery.Modules.Shipments.Domain;
+using FleetDelivery.Modules.Vehicles.Application.Vehicles;
 using MediatR;
 
 namespace FleetDelivery.Modules.Shipments.Application.Shipments;
 
-public sealed record AssignCommand(Guid ShipmentId, Guid DriverId, Guid AssignedByUserId, int ExpectedVersion) : IRequest<Result<ShipmentDto>>;
+public sealed record AssignCommand(Guid ShipmentId, Guid DriverId, Guid VehicleId, Guid AssignedByUserId, int ExpectedVersion) : IRequest<Result<ShipmentDto>>;
 
 /// <summary>
 /// Validates <c>driverId</c> against Identity's own Application public
-/// contract (<see cref="GetCurrentUserQuery"/>, sent via MediatR's
-/// <see cref="ISender"/>) rather than a direct query into the <c>identity</c>
-/// schema — the in-process cross-module call style described in
-/// docs/ARCHITECTURE.md. There is no separate Drivers module in M2: "driver"
-/// IS just an Identity user with <c>Role.Driver</c>.
+/// contract (<see cref="GetCurrentUserQuery"/>) and <c>vehicleId</c> against
+/// Vehicles' own Application public contract (<see cref="GetVehicleByIdQuery"/>),
+/// both sent via MediatR's <see cref="ISender"/> rather than a direct query
+/// into the <c>identity</c>/<c>vehicles</c> schemas — the in-process
+/// cross-module call style described in docs/ARCHITECTURE.md. There is no
+/// separate Drivers module in M2: "driver" IS just an Identity user with
+/// <c>Role.Driver</c>.
 /// </summary>
 public sealed class AssignCommandHandler(IShipmentRepository repository, IUnitOfWork unitOfWork, ISender sender)
     : IRequestHandler<AssignCommand, Result<ShipmentDto>>
@@ -41,9 +44,16 @@ public sealed class AssignCommandHandler(IShipmentRepository repository, IUnitOf
             return Result.Failure<ShipmentDto>(ShipmentErrors.InvalidDriver);
         }
 
+        var vehicleResult = await sender.Send(new GetVehicleByIdQuery(request.VehicleId), cancellationToken);
+
+        if (vehicleResult.IsFailure || !string.Equals(vehicleResult.Value.Status, VehicleStatusNames.Active, StringComparison.Ordinal))
+        {
+            return Result.Failure<ShipmentDto>(ShipmentErrors.InvalidVehicle);
+        }
+
         try
         {
-            shipment.Assign(request.DriverId, request.AssignedByUserId);
+            shipment.Assign(request.DriverId, request.VehicleId, request.AssignedByUserId);
         }
         catch (InvalidShipmentTransitionException ex)
         {
