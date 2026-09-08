@@ -17,6 +17,7 @@ internal static class ShipmentMapper
         shipment.AssignedVehicleId,
         shipment.CreatedByUserId,
         shipment.CreatedAt,
+        shipment.HasProofOfDelivery,
         shipment.Version);
 
     public static AddressDto ToDto(this Address address) => new(

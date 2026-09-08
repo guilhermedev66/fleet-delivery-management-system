@@ -132,6 +132,7 @@ shouldn't see it.
 | `GET /api/shipments` | any | Paged, optional `status`/`driverId` filter; a Driver's own filter is always server-forced, ignoring any client-supplied `driverId` |
 | `GET /api/shipments/{id}` | any | 404 (not 403) if a Driver requests one not assigned to them |
 | `GET /api/shipments/{id}/timeline` | any | Same ownership rule as above |
+| `GET /api/shipments/{id}/proof-of-delivery` | any | Returns the photo bytes with their detected MIME type; Dispatcher/Admin or the assigned Driver only, otherwise 404 |
 | `GET /api/shipments/drivers` | Dispatcher, Admin | Every Driver, each with `isAvailable` — see above |
 | `POST /api/shipments/{id}/ready-for-dispatch` | Dispatcher, Admin | Serves both `Draft -> ReadyForDispatch` and `Rescheduled -> ReadyForDispatch` — see the doc comment on `ReadyForDispatchCommand` |
 | `POST /api/shipments/{id}/assign` | Dispatcher, Admin | Body: `{ driverId, vehicleId, expectedVersion }` |
@@ -139,6 +140,7 @@ shouldn't see it.
 | `POST /api/shipments/{id}/in-transit` | Driver | Body: `{ expectedVersion }` |
 | `POST /api/shipments/{id}/out-for-delivery` | Driver | Body: `{ expectedVersion }` |
 | `POST /api/shipments/{id}/deliver` | Driver | Body: `{ expectedVersion, recipientName?, notes? }` |
+| `POST /api/shipments/{id}/proof-of-delivery` | Driver | `multipart/form-data`, field `file`; assigned Driver only and only after delivery |
 | `POST /api/shipments/{id}/fail` | Driver | Body: `{ expectedVersion, reason }` |
 | `POST /api/shipments/{id}/reschedule` | Dispatcher, Admin | Body: `{ expectedVersion }` |
 | `POST /api/shipments/{id}/return` | Dispatcher, Admin | Body: `{ expectedVersion, reason }` |
@@ -152,6 +154,53 @@ stale — distinguishable from an invalid-transition 409 by its `type`
 see the doc comment on `Shipment` for why, and
 [`ShipmentEndpointsTests`](../tests/FleetDelivery.IntegrationTests/Shipments/ShipmentEndpointsTests.cs)
 for a real (not mocked) stale-version-returns-409 test.
+
+### Proof of Delivery uploads
+
+The assigned Driver attaches one immutable photo after the shipment reaches
+`Delivered`; a second upload is a 409 rather than an overwrite. Dispatcher,
+Admin, and that assigned Driver can download it. An unrelated Driver gets the
+same 404 as an unknown shipment/photo, preserving the module's IDOR rule.
+
+| Method & path | Request / response | Failure behavior |
+|---|---|---|
+| `POST /api/shipments/{id}/proof-of-delivery` | Multipart field `file`; returns the updated shipment with `hasProofOfDelivery: true` | 400 over 5 MB or invalid image content; 404 wrong Driver; 409 not delivered/already attached |
+| `GET /api/shipments/{id}/proof-of-delivery` | Raw bytes with canonical `image/jpeg` or `image/png` `Content-Type` | 404 if absent, unknown, or not authorized to view |
+
+Uploads are capped at 5 MB in the Application handler before the photo entity
+is created. JPEG and PNG are accepted by inspecting their actual byte
+signatures (`FF D8 FF` and `89 50 4E 47 0D 0A 1A 0A`); the browser-supplied
+MIME type and filename are never trusted or persisted. The detected canonical
+MIME type is stored instead.
+
+Photo bytes live in `shipments.proof_of_delivery_photos` as PostgreSQL
+`bytea`, outside the web root and with no filesystem path or executable file.
+The table is a separate top-level EF entity whose `shipment_id` is both its
+primary key and a same-schema foreign key to `shipments.shipments`. It is not
+an owned entity and has no navigation from `Shipment`, so normal list/detail
+queries never load the blob. `Shipment.HasProofOfDelivery` is the cheap read
+model flag. Uploading adds the photo and flips that flag through the same
+scoped `ShipmentsDbContext` and one `SaveChangesAsync`, making them atomic.
+
+The checked-in migrations are applied with the normal Shipments command:
+
+```bash
+cd backend
+dotnet ef database update \
+  --project src/Modules/Shipments/FleetDelivery.Modules.Shipments.Infrastructure/FleetDelivery.Modules.Shipments.Infrastructure.csproj \
+  --startup-project src/FleetDelivery.Api/FleetDelivery.Api.csproj \
+  --context ShipmentsDbContext
+```
+
+If this model changes later, generate its next migration with:
+
+```bash
+dotnet ef migrations add <Name> \
+  --project src/Modules/Shipments/FleetDelivery.Modules.Shipments.Infrastructure/FleetDelivery.Modules.Shipments.Infrastructure.csproj \
+  --startup-project src/FleetDelivery.Api/FleetDelivery.Api.csproj \
+  --context ShipmentsDbContext \
+  --output-dir Persistence/Migrations
+```
 
 ### Outbox: written AND published (M4)
 
@@ -230,7 +279,7 @@ dotnet ef database update \
   --context ShipmentsDbContext
 ```
 
-To add a new migration after changing `Shipment`/`TrackingEvent`/`DeliveryAttempt`/their `IEntityTypeConfiguration`s:
+To add a new migration after changing `Shipment`/`TrackingEvent`/`DeliveryAttempt`/`ProofOfDeliveryPhoto`/their `IEntityTypeConfiguration`s:
 
 ```bash
 dotnet ef migrations add <Name> \

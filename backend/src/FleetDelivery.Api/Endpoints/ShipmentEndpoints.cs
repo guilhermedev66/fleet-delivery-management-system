@@ -25,6 +25,7 @@ public static class ShipmentEndpoints
         group.MapGet("/drivers", ListAvailableDriversAsync).RequireAuthorization(policy => policy.RequireRole("Dispatcher", "Admin"));
         group.MapGet("/{id:guid}", GetShipmentByIdAsync);
         group.MapGet("/{id:guid}/timeline", GetShipmentTimelineAsync);
+        group.MapGet("/{id:guid}/proof-of-delivery", GetProofOfDeliveryPhotoAsync);
 
         group.MapPost("/{id:guid}/ready-for-dispatch", ReadyForDispatchAsync).RequireAuthorization(policy => policy.RequireRole("Dispatcher", "Admin"));
         group.MapPost("/{id:guid}/assign", AssignAsync).RequireAuthorization(policy => policy.RequireRole("Dispatcher", "Admin"));
@@ -32,6 +33,9 @@ public static class ShipmentEndpoints
         group.MapPost("/{id:guid}/in-transit", MarkInTransitAsync).RequireAuthorization(policy => policy.RequireRole("Driver"));
         group.MapPost("/{id:guid}/out-for-delivery", MarkOutForDeliveryAsync).RequireAuthorization(policy => policy.RequireRole("Driver"));
         group.MapPost("/{id:guid}/deliver", MarkDeliveredAsync).RequireAuthorization(policy => policy.RequireRole("Driver"));
+        group.MapPost("/{id:guid}/proof-of-delivery", AttachProofOfDeliveryAsync)
+            .DisableAntiforgery()
+            .RequireAuthorization(policy => policy.RequireRole("Driver"));
         group.MapPost("/{id:guid}/fail", MarkFailedAsync).RequireAuthorization(policy => policy.RequireRole("Driver"));
         group.MapPost("/{id:guid}/reschedule", RescheduleAsync).RequireAuthorization(policy => policy.RequireRole("Dispatcher", "Admin"));
         group.MapPost("/{id:guid}/return", ReturnAsync).RequireAuthorization(policy => policy.RequireRole("Dispatcher", "Admin"));
@@ -124,6 +128,20 @@ public static class ShipmentEndpoints
         return result.IsSuccess ? Results.Ok(result.Value.ToResponse()) : MapFailure(result.Error);
     }
 
+    private static async Task<IResult> GetProofOfDeliveryPhotoAsync(Guid id, ClaimsPrincipal user, ISender sender, CancellationToken cancellationToken)
+    {
+        if (!TryGetCallerId(user, out var callerId))
+        {
+            return Results.Unauthorized();
+        }
+
+        var result = await sender.Send(new GetProofOfDeliveryPhotoQuery(id, callerId, GetCallerRole(user)), cancellationToken);
+
+        return result.IsSuccess
+            ? Results.File(result.Value.Content, result.Value.ContentType)
+            : MapFailure(result.Error);
+    }
+
     private static async Task<IResult> ReadyForDispatchAsync(Guid id, ExpectedVersionRequest request, ClaimsPrincipal user, ISender sender, CancellationToken cancellationToken)
     {
         if (!TryGetCallerId(user, out var callerId))
@@ -192,6 +210,28 @@ public static class ShipmentEndpoints
         }
 
         var result = await sender.Send(new MarkDeliveredCommand(id, callerId, request.ExpectedVersion, request.RecipientName, request.Notes), cancellationToken);
+
+        return result.IsSuccess ? Results.Ok(result.Value.ToResponse()) : MapFailure(result.Error);
+    }
+
+    private static async Task<IResult> AttachProofOfDeliveryAsync(
+        Guid id,
+        IFormFile file,
+        ClaimsPrincipal user,
+        ISender sender,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetCallerId(user, out var callerId))
+        {
+            return Results.Unauthorized();
+        }
+
+        await using var contentStream = new MemoryStream();
+        await file.CopyToAsync(contentStream, cancellationToken);
+
+        var result = await sender.Send(
+            new AttachProofOfDeliveryCommand(id, callerId, contentStream.ToArray(), file.ContentType),
+            cancellationToken);
 
         return result.IsSuccess ? Results.Ok(result.Value.ToResponse()) : MapFailure(result.Error);
     }
@@ -287,6 +327,30 @@ public static class ShipmentEndpoints
             detail: error.Message,
             type: "https://fleetdelivery.local/errors/shipment-invalid-vehicle"),
 
+        "Shipment.ProofOfDeliveryTooLarge" => Results.Problem(
+            statusCode: StatusCodes.Status400BadRequest,
+            title: "Proof of Delivery photo too large.",
+            detail: error.Message,
+            type: "https://fleetdelivery.local/errors/shipment-proof-of-delivery-too-large"),
+
+        "Shipment.InvalidProofOfDeliveryContent" => Results.Problem(
+            statusCode: StatusCodes.Status400BadRequest,
+            title: "Invalid Proof of Delivery photo.",
+            detail: error.Message,
+            type: "https://fleetdelivery.local/errors/shipment-invalid-proof-of-delivery-content"),
+
+        "Shipment.NotDelivered" => Results.Problem(
+            statusCode: StatusCodes.Status409Conflict,
+            title: "Shipment not delivered.",
+            detail: error.Message,
+            type: "https://fleetdelivery.local/errors/shipment-not-delivered"),
+
+        "Shipment.ProofOfDeliveryAlreadyAttached" => Results.Problem(
+            statusCode: StatusCodes.Status409Conflict,
+            title: "Proof of Delivery already attached.",
+            detail: error.Message,
+            type: "https://fleetdelivery.local/errors/shipment-proof-of-delivery-already-attached"),
+
         "Shipment.Validation" => Results.Problem(
             statusCode: StatusCodes.Status400BadRequest,
             title: "Validation error.",
@@ -330,6 +394,7 @@ public sealed record ShipmentResponse(
     Guid? AssignedVehicleId,
     Guid CreatedByUserId,
     DateTimeOffset CreatedAt,
+    bool HasProofOfDelivery,
     int Version);
 
 public sealed record ShipmentListResponse(IReadOnlyList<ShipmentResponse> Items, int Page, int PageSize, int TotalCount);
@@ -356,6 +421,7 @@ internal static class ShipmentApiMapping
         dto.AssignedVehicleId,
         dto.CreatedByUserId,
         dto.CreatedAt,
+        dto.HasProofOfDelivery,
         dto.Version);
 
     public static AvailableDriverResponse ToResponse(this AvailableDriverDto dto) => new(dto.Id, dto.FullName, dto.Email, dto.IsAvailable);

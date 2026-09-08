@@ -36,6 +36,8 @@ public sealed class ShipmentsDbContext(DbContextOptions<ShipmentsDbContext> opti
 
     public DbSet<Shipment> Shipments => Set<Shipment>();
 
+    public DbSet<ProofOfDeliveryPhoto> ProofOfDeliveryPhotos => Set<ProofOfDeliveryPhoto>();
+
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

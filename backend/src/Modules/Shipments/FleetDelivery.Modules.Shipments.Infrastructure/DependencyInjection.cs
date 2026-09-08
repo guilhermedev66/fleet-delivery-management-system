@@ -21,6 +21,7 @@ public static class DependencyInjection
 
         services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<ShipmentsDbContext>());
         services.AddScoped<IShipmentRepository, ShipmentRepository>();
+        services.AddScoped<IProofOfDeliveryPhotoRepository, ProofOfDeliveryPhotoRepository>();
 
         services.AddOutboxPublisher(configuration);
 

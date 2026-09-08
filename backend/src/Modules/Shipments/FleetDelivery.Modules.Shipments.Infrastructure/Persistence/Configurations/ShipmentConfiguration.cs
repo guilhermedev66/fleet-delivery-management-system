@@ -86,6 +86,10 @@ public sealed class ShipmentConfiguration : IEntityTypeConfiguration<Shipment>
             .HasColumnName("created_at")
             .IsRequired();
 
+        builder.Property(s => s.HasProofOfDelivery)
+            .HasColumnName("has_proof_of_delivery")
+            .IsRequired();
+
         // Hand-rolled optimistic-concurrency token — see the class-level doc
         // comment on Shipment for why this isn't Postgres's xmin.
         builder.Property(s => s.Version)

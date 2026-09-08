@@ -14,7 +14,10 @@ public sealed record ShipmentDto(
     Guid? AssignedVehicleId,
     Guid CreatedByUserId,
     DateTimeOffset CreatedAt,
+    bool HasProofOfDelivery,
     int Version);
+
+public sealed record ProofOfDeliveryPhotoDto(byte[] Content, string ContentType);
 
 public sealed record TrackingEventDto(string Type, DateTimeOffset OccurredAt, Guid? ActorUserId, string? Notes);
 

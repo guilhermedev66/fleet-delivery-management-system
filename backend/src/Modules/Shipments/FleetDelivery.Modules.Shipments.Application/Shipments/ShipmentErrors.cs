@@ -27,5 +27,17 @@ public static class ShipmentErrors
         "Shipment.InvalidVehicle",
         "The specified vehicleId does not reference an Active vehicle.");
 
+    public static readonly Error ProofOfDeliveryTooLarge = new(
+        "Shipment.ProofOfDeliveryTooLarge",
+        "The Proof of Delivery photo must not exceed 5 MB.");
+
+    public static readonly Error InvalidProofOfDeliveryContent = new(
+        "Shipment.InvalidProofOfDeliveryContent",
+        "The Proof of Delivery file must be a JPEG or PNG image whose content matches the image format.");
+
+    public static Error ShipmentNotDelivered(string message) => new("Shipment.NotDelivered", message);
+
+    public static Error ProofOfDeliveryAlreadyAttached(string message) => new("Shipment.ProofOfDeliveryAlreadyAttached", message);
+
     public static Error Validation(string message) => new("Shipment.Validation", message);
 }

@@ -27,7 +27,6 @@ public sealed class ProofOfDeliveryPhoto : Entity<Guid>
     private ProofOfDeliveryPhoto(Guid shipmentId, byte[] content, string contentType, DateTimeOffset uploadedAt)
         : base(shipmentId)
     {
-        ShipmentId = shipmentId;
         Content = content;
         ContentType = contentType;
         SizeBytes = content.LongLength;
@@ -35,7 +34,7 @@ public sealed class ProofOfDeliveryPhoto : Entity<Guid>
     }
 
     /// <summary>Same value as <see cref="Entity{TId}.Id"/> — a shipment has at most one photo, so the shipment's own id is the natural key. Kept as an explicit named property for readability at call sites.</summary>
-    public Guid ShipmentId { get; private set; }
+    public Guid ShipmentId => Id;
 
     public byte[] Content { get; private set; } = [];
 

@@ -12,6 +12,20 @@ public class ShipmentTests
     private static Shipment CreateDraftShipment(Guid? createdByUserId = null) =>
         Shipment.Create("Jane Recipient", "+1-555-0100", SampleAddress("Origin City"), SampleAddress("Destination City"), createdByUserId ?? Guid.NewGuid());
 
+    private static (Shipment Shipment, Guid DriverId) CreateDeliveredShipment()
+    {
+        var driverId = Guid.NewGuid();
+        var shipment = CreateDraftShipment();
+        shipment.MarkReadyForDispatch(Guid.NewGuid());
+        shipment.Assign(driverId, Guid.NewGuid(), Guid.NewGuid());
+        shipment.MarkPickedUp(driverId);
+        shipment.MarkInTransit(driverId);
+        shipment.MarkOutForDelivery(driverId);
+        shipment.MarkDelivered(driverId, "Jane Recipient", "Left at front door");
+
+        return (shipment, driverId);
+    }
+
     [Fact]
     public void Create_returns_a_shipment_in_Draft_with_a_Created_tracking_event_and_domain_event()
     {
@@ -83,6 +97,61 @@ public class ShipmentTests
         var act = () => shipment.MarkDelivered(Guid.NewGuid(), "Someone", null);
 
         act.Should().Throw<InvalidShipmentTransitionException>();
+    }
+
+    [Fact]
+    public void MarkDelivered_records_a_successful_delivery_attempt()
+    {
+        var (shipment, driverId) = CreateDeliveredShipment();
+
+        shipment.DeliveryAttempts.Should().ContainSingle(attempt =>
+            attempt.DriverId == driverId
+            && attempt.Outcome == DeliveryAttemptOutcome.Successful
+            && attempt.Notes == "Left at front door");
+    }
+
+    [Fact]
+    public void AttachProofOfDelivery_before_Delivered_throws_and_does_not_set_the_flag()
+    {
+        var shipment = CreateDraftShipment();
+
+        var act = () => shipment.AttachProofOfDelivery(Guid.NewGuid());
+
+        act.Should().Throw<ShipmentNotDeliveredException>();
+        shipment.HasProofOfDelivery.Should().BeFalse();
+    }
+
+    [Fact]
+    public void AttachProofOfDelivery_with_the_wrong_driver_throws_and_does_not_set_the_flag()
+    {
+        var (shipment, _) = CreateDeliveredShipment();
+
+        var act = () => shipment.AttachProofOfDelivery(Guid.NewGuid());
+
+        act.Should().Throw<ShipmentDriverMismatchException>();
+        shipment.HasProofOfDelivery.Should().BeFalse();
+    }
+
+    [Fact]
+    public void AttachProofOfDelivery_twice_throws_and_keeps_the_original_attached_state()
+    {
+        var (shipment, driverId) = CreateDeliveredShipment();
+        shipment.AttachProofOfDelivery(driverId);
+
+        var act = () => shipment.AttachProofOfDelivery(driverId);
+
+        act.Should().Throw<ProofOfDeliveryAlreadyAttachedException>();
+        shipment.HasProofOfDelivery.Should().BeTrue();
+    }
+
+    [Fact]
+    public void AttachProofOfDelivery_for_the_assigned_driver_after_delivery_sets_the_flag()
+    {
+        var (shipment, driverId) = CreateDeliveredShipment();
+
+        shipment.AttachProofOfDelivery(driverId);
+
+        shipment.HasProofOfDelivery.Should().BeTrue();
     }
 
     [Fact]
