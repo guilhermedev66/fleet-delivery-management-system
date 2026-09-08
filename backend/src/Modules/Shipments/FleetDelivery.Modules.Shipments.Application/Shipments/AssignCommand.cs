@@ -44,6 +44,13 @@ public sealed class AssignCommandHandler(IShipmentRepository repository, IUnitOf
             return Result.Failure<ShipmentDto>(ShipmentErrors.InvalidDriver);
         }
 
+        var busyDriverIds = await repository.GetBusyDriverIdsAsync(cancellationToken);
+
+        if (busyDriverIds.Contains(request.DriverId))
+        {
+            return Result.Failure<ShipmentDto>(ShipmentErrors.DriverBusy);
+        }
+
         var vehicleResult = await sender.Send(new GetVehicleByIdQuery(request.VehicleId), cancellationToken);
 
         if (vehicleResult.IsFailure || !string.Equals(vehicleResult.Value.Status, VehicleStatusNames.Active, StringComparison.Ordinal))

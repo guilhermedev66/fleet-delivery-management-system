@@ -23,6 +23,10 @@ public static class ShipmentErrors
         "Shipment.InvalidDriver",
         "The specified driverId does not reference an active user with the Driver role.");
 
+    public static readonly Error DriverBusy = new(
+        "Shipment.DriverBusy",
+        "The specified driver is already assigned to an in-progress shipment.");
+
     public static readonly Error InvalidVehicle = new(
         "Shipment.InvalidVehicle",
         "The specified vehicleId does not reference an Active vehicle.");

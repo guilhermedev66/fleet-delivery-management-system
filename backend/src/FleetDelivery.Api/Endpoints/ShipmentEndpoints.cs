@@ -321,6 +321,12 @@ public static class ShipmentEndpoints
             detail: error.Message,
             type: "https://fleetdelivery.local/errors/shipment-invalid-driver"),
 
+        "Shipment.DriverBusy" => Results.Problem(
+            statusCode: StatusCodes.Status409Conflict,
+            title: "Driver unavailable.",
+            detail: error.Message,
+            type: "https://fleetdelivery.local/errors/shipment-driver-busy"),
+
         "Shipment.InvalidVehicle" => Results.Problem(
             statusCode: StatusCodes.Status400BadRequest,
             title: "Invalid vehicle.",

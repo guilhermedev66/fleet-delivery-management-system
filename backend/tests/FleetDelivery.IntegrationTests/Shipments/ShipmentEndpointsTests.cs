@@ -226,6 +226,86 @@ public sealed class ShipmentEndpointsTests : IClassFixture<ShipmentsApiFactory>
     }
 
     [Fact]
+    public async Task Assigning_a_driver_who_is_already_on_an_in_progress_shipment_returns_409()
+    {
+        var client = CreateClient();
+        var (_, dispatcherEmail, dispatcherPassword) = await _factory.CreateUserAsync(Role.Dispatcher);
+        var (busyDriverId, _, _) = await _factory.CreateUserAsync(Role.Driver);
+        var dispatcherToken = await LoginAsync(client, dispatcherEmail, dispatcherPassword);
+
+        await CreateReadyAndAssignedShipmentAsync(client, dispatcherToken, busyDriverId);
+
+        var secondVehicleId = await RegisterVehicleAsync(client, dispatcherToken);
+        var secondShipment = await CreateShipmentAsync(client, dispatcherToken);
+        secondShipment = (await PostAsync(
+            client,
+            $"/api/shipments/{secondShipment.Id}/ready-for-dispatch",
+            dispatcherToken,
+            new ExpectedVersionRequest(secondShipment.Version)))!;
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/shipments/{secondShipment.Id}/assign")
+        {
+            Content = JsonContent.Create(new AssignRequest(busyDriverId, secondVehicleId, secondShipment.Version)),
+        };
+        Authorize(request, dispatcherToken);
+        using var response = await client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        problem!.Type.Should().Contain("shipment-driver-busy");
+    }
+
+    [Fact]
+    public async Task Two_parallel_assignments_of_the_same_shipment_have_exactly_one_winner_and_one_concurrency_conflict()
+    {
+        var client = CreateClient();
+        var (_, dispatcherEmail, dispatcherPassword) = await _factory.CreateUserAsync(Role.Dispatcher);
+        var (driverAId, _, _) = await _factory.CreateUserAsync(Role.Driver);
+        var (driverBId, _, _) = await _factory.CreateUserAsync(Role.Driver);
+        var dispatcherToken = await LoginAsync(client, dispatcherEmail, dispatcherPassword);
+        var vehicleAId = await RegisterVehicleAsync(client, dispatcherToken);
+        var vehicleBId = await RegisterVehicleAsync(client, dispatcherToken);
+
+        var shipment = await CreateShipmentAsync(client, dispatcherToken);
+        shipment = (await PostAsync(
+            client,
+            $"/api/shipments/{shipment.Id}/ready-for-dispatch",
+            dispatcherToken,
+            new ExpectedVersionRequest(shipment.Version)))!;
+
+        using var requestA = new HttpRequestMessage(HttpMethod.Post, $"/api/shipments/{shipment.Id}/assign")
+        {
+            Content = JsonContent.Create(new AssignRequest(driverAId, vehicleAId, shipment.Version)),
+        };
+        using var requestB = new HttpRequestMessage(HttpMethod.Post, $"/api/shipments/{shipment.Id}/assign")
+        {
+            Content = JsonContent.Create(new AssignRequest(driverBId, vehicleBId, shipment.Version)),
+        };
+        Authorize(requestA, dispatcherToken);
+        Authorize(requestB, dispatcherToken);
+
+        var responseTasks = new[] { client.SendAsync(requestA), client.SendAsync(requestB) };
+        var responses = await Task.WhenAll(responseTasks);
+
+        try
+        {
+            responses.Count(response => response.StatusCode == HttpStatusCode.OK).Should().Be(1);
+            responses.Count(response => response.StatusCode == HttpStatusCode.Conflict).Should().Be(1);
+
+            var loser = responses.Single(response => response.StatusCode == HttpStatusCode.Conflict);
+            var problem = await loser.Content.ReadFromJsonAsync<ProblemDetails>();
+            problem!.Type.Should().Contain("shipment-concurrency-conflict");
+        }
+        finally
+        {
+            foreach (var response in responses)
+            {
+                response.Dispose();
+            }
+        }
+    }
+
+    [Fact]
     public async Task A_transition_writes_an_outbox_row_in_the_same_call_as_the_state_change()
     {
         var client = CreateClient();
