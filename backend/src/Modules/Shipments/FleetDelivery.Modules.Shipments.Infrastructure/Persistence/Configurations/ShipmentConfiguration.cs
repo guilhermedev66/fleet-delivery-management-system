@@ -17,7 +17,9 @@ public sealed class ShipmentConfiguration : IEntityTypeConfiguration<Shipment>
 {
     public void Configure(EntityTypeBuilder<Shipment> builder)
     {
-        builder.ToTable("shipments");
+        builder.ToTable("shipments", table => table.HasCheckConstraint(
+            "ck_shipments_status",
+            $"status IN ({string.Join(", ", Enum.GetNames<ShipmentStatus>().Select(name => $"'{name}'"))})"));
 
         builder.HasKey(s => s.Id);
 
@@ -117,7 +119,9 @@ public sealed class ShipmentConfiguration : IEntityTypeConfiguration<Shipment>
 
         builder.OwnsMany(s => s.DeliveryAttempts, deliveryAttempt =>
         {
-            deliveryAttempt.ToTable("delivery_attempts");
+            deliveryAttempt.ToTable("delivery_attempts", table => table.HasCheckConstraint(
+                "ck_delivery_attempts_outcome",
+                $"outcome IN ({string.Join(", ", Enum.GetNames<DeliveryAttemptOutcome>().Select(name => $"'{name}'"))})"));
             deliveryAttempt.WithOwner().HasForeignKey(da => da.ShipmentId);
             deliveryAttempt.HasKey(da => da.Id);
 

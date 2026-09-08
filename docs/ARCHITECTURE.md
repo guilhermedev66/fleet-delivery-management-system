@@ -75,12 +75,15 @@ constraints (e.g. `Vehicle.PlateNumber`, `Shipment.TrackingNumber`),
 concurrency tokens (a hand-rolled `Version` column, not Postgres's `xmin` —
 see the doc comment on `Shipment` for why) on every mutable aggregate root.
 
-**Actual: status enums are mapped as `varchar` with no Postgres `CHECK`
-constraint** — an invalid value could theoretically land in the column via
-a channel that bypasses EF Core entirely (raw SQL, a different client). The
-application layer is the only thing preventing it today. A `CHECK`
-constraint is a cheap, real strengthening worth adding without much
-ceremony; it just hasn't been done yet. **"One active assignment per
+Status/type/role enums (`Shipment.Status`, `DeliveryAttempt.Outcome`,
+`Vehicle.Type`/`Status`, `User.Role`) are `varchar` columns backed by a real
+Postgres `CHECK` constraint (`ck_<table>_<column>`, generated from
+`Enum.GetNames<T>()` so it can't drift from the enum) — an invalid value is
+rejected at the database layer even via raw SQL that bypasses EF Core
+entirely, not just by the application layer. Proven with a real test
+(`StatusCheckConstraintTests`, a raw SQL insert asserted to throw a
+Postgres `23514` check-violation), not just by the migration applying
+without error. **"One active assignment per
 shipment" is enforced by the state machine (`AssignedDriverId`/`AssignedVehicleId`
 are scalar nullable columns — a shipment structurally has zero or one
 active assignment, never a set of them) plus the optimistic concurrency

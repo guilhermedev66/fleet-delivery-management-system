@@ -20,7 +20,9 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
 {
     public void Configure(EntityTypeBuilder<User> builder)
     {
-        builder.ToTable("users");
+        builder.ToTable("users", table => table.HasCheckConstraint(
+            "ck_users_role",
+            $"role IN ({string.Join(", ", Enum.GetNames<Role>().Select(name => $"'{name}'"))})"));
 
         builder.HasKey(u => u.Id);
 

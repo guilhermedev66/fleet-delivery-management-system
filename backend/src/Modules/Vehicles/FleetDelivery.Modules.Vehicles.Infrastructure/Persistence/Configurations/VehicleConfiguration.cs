@@ -8,7 +8,15 @@ public sealed class VehicleConfiguration : IEntityTypeConfiguration<Vehicle>
 {
     public void Configure(EntityTypeBuilder<Vehicle> builder)
     {
-        builder.ToTable("vehicles");
+        builder.ToTable("vehicles", table =>
+        {
+            table.HasCheckConstraint(
+                "ck_vehicles_type",
+                $"type IN ({string.Join(", ", Enum.GetNames<VehicleType>().Select(name => $"'{name}'"))})");
+            table.HasCheckConstraint(
+                "ck_vehicles_status",
+                $"status IN ({string.Join(", ", Enum.GetNames<VehicleStatus>().Select(name => $"'{name}'"))})");
+        });
 
         builder.HasKey(v => v.Id);
 

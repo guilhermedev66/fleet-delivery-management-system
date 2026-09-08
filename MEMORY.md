@@ -281,6 +281,49 @@ notes for the specifics). DB `CHECK` constraints on status enums remains a
 genuine, cheap, not-yet-done strengthening — worth picking up opportunistically,
 not urgent.
 
+## Backend fallback work (2026-09-08, Claude Orchestrator, both Codex agents on usage-limit cooldown)
+
+- Fixed 3 findings from a self-review of Codex Backend's freshly-shipped
+  Proof of Delivery code (commit `85bbaf1`): a concurrent-double-upload
+  race whose loser got an uncaught 500 instead of a 409 (DB PK already
+  prevented the actual duplicate row — this only fixed the error path, not
+  a data-integrity bug); the 5MB size check ran after full buffering, not
+  before (`IFormFile.Length` is known pre-read); no `X-Content-Type-Options:
+  nosniff` anywhere in the app.
+- Added the Postgres `CHECK` constraints on every enum-backed `varchar`
+  column (`Shipment.Status`, `DeliveryAttempt.Outcome`, `Vehicle.Type`/`Status`,
+  `User.Role`) that Antigravity's gap-analysis flagged as a real,
+  deliberately-deferred gap — generated from `Enum.GetNames<T>()` per
+  column so the constraint can't drift from the enum, proven with a real
+  raw-SQL-insert test (`StatusCheckConstraintTests`) rather than just
+  trusting the migration applied.
+- Both were queued for Codex Backend first; picked up directly only after
+  it hit its usage limit before starting them (see Maestri notes below) —
+  not a default preference to implement backend solo.
+
+## Maestri operational notes (2026-09-08)
+
+- **`maestri ask` sometimes delivers a prompt as pasted-but-unsubmitted
+  input** rather than a real new turn — the target agent's terminal shows
+  the text but never starts working. Symptom: `maestri check` shows the
+  same idle prompt across repeated checks with no "Working" indicator.
+  Fix: `maestri ask "<Agent>" --raw "\n"` (a bare Enter) to submit it —
+  worked every time this happened. Check for this specifically if an agent
+  seems to have gone silent right after receiving a long/multi-paragraph
+  prompt.
+- **A Codex agent hitting its usage limit mid-task is a real, visible
+  terminal state** ("You've hit your usage limit... try again at
+  <time>"), not a silent failure — `maestri check` shows it plainly. Both
+  Codex Backend and Codex QA share one usage pool on this account/session;
+  one hitting the limit usually means the other is close too. Per this
+  workspace's standing fallback protocol (confirmed by the user
+  explicitly, and matching a prior project's precedent found in a stale
+  canvas note): a usage-limit hit is not a stop condition — the
+  orchestrator picks up bounded, well-diagnosed fallback work directly
+  rather than blocking for the ~hours-long reset, then hands the next
+  block back to Codex once it's reachable again, at a safe checkpoint
+  boundary (not mid-unit).
+
 ## Multi-agent session note (2026-09-08) — Maestri, not just ListAgents
 
 **`ListAgents` does not surface Maestri canvas agents.** Earlier in this

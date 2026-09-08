@@ -3,6 +3,7 @@ using System;
 using FleetDelivery.Modules.Vehicles.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FleetDelivery.Modules.Vehicles.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(VehiclesDbContext))]
-    partial class VehiclesDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260908172153_AddTypeAndStatusCheckConstraints")]
+    partial class AddTypeAndStatusCheckConstraints
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
