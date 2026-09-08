@@ -6,16 +6,19 @@ namespace FleetDelivery.Modules.Shipments.Domain;
 public enum DeliveryAttemptOutcome
 {
     Failed,
-
-    /// <summary>Not produced anywhere yet in M2 — reserved for M5's Proof-of-Delivery work to attach a successful attempt.</summary>
     Successful,
 }
 
 /// <summary>
 /// Owned by (child of) the <see cref="Shipment"/> aggregate, separate from
-/// <see cref="TrackingEvent"/> — this table exists so M5's Proof-of-Delivery
-/// work has somewhere to attach a successful attempt later. Deliberately not
-/// over-built for M2: only what <see cref="Shipment.MarkFailed"/> needs.
+/// <see cref="TrackingEvent"/>. Both <see cref="Shipment.MarkFailed"/> and
+/// <see cref="Shipment.MarkDelivered"/> append one of these. The Proof of
+/// Delivery photo itself is deliberately NOT stored here (or anywhere owned
+/// by <see cref="Shipment"/>) — EF Core loads owned collections eagerly with
+/// their owner, and a multi-megabyte blob riding along on every shipment
+/// list/detail query would be a real performance trap. See
+/// <see cref="ProofOfDeliveryPhoto"/>, a genuinely separate, on-demand-only
+/// entity, for where it actually lives.
 /// </summary>
 public sealed class DeliveryAttempt : Entity<Guid>
 {
@@ -46,4 +49,7 @@ public sealed class DeliveryAttempt : Entity<Guid>
 
     internal static DeliveryAttempt Failed(Guid shipmentId, Guid driverId, string? notes) =>
         new(Guid.NewGuid(), shipmentId, driverId, DateTimeOffset.UtcNow, DeliveryAttemptOutcome.Failed, notes);
+
+    internal static DeliveryAttempt Successful(Guid shipmentId, Guid driverId, string? notes) =>
+        new(Guid.NewGuid(), shipmentId, driverId, DateTimeOffset.UtcNow, DeliveryAttemptOutcome.Successful, notes);
 }

@@ -104,6 +104,9 @@ public sealed class Shipment : AggregateRoot<Guid>
 
     public DateTimeOffset CreatedAt { get; private set; }
 
+    /// <summary>Cheap flag — the photo itself lives in <see cref="ProofOfDeliveryPhoto"/>, a separate on-demand entity, never loaded with the shipment. See that type's doc comment for why.</summary>
+    public bool HasProofOfDelivery { get; private set; }
+
     /// <summary>Optimistic-concurrency token. See the class-level doc comment for why this is hand-rolled rather than Postgres's <c>xmin</c>.</summary>
     public int Version { get; private set; }
 
@@ -204,7 +207,34 @@ public sealed class Shipment : AggregateRoot<Guid>
         }
 
         ApplyTransition(ShipmentStatus.Delivered, "Delivered", driverId, notes);
+        _deliveryAttempts.Add(DeliveryAttempt.Successful(Id, driverId, notes));
         AddDomainEvent(new DeliveryCompleted(Id, driverId, recipientName.Trim(), DateTimeOffset.UtcNow));
+    }
+
+    /// <summary>
+    /// Records that a Proof of Delivery photo now exists for this shipment —
+    /// the actual bytes are persisted separately (see <see cref="ProofOfDeliveryPhoto"/>);
+    /// this just flips the cheap flag other reads can check without paying
+    /// for the blob. Only the assigned driver, and only after the shipment
+    /// is actually <see cref="ShipmentStatus.Delivered"/> — a photo can't
+    /// retroactively prove a delivery that hasn't happened, and can't be
+    /// attached by anyone else.
+    /// </summary>
+    public void AttachProofOfDelivery(Guid driverId)
+    {
+        if (Status != ShipmentStatus.Delivered)
+        {
+            throw new ShipmentNotDeliveredException(Id, Status);
+        }
+
+        EnsureAssignedDriver(driverId);
+
+        if (HasProofOfDelivery)
+        {
+            throw new ProofOfDeliveryAlreadyAttachedException(Id);
+        }
+
+        HasProofOfDelivery = true;
     }
 
     /// <summary><c>OutForDelivery -> DeliveryFailed</c>. Also records a failed <see cref="DeliveryAttempt"/>. <paramref name="driverId"/> must be the currently assigned driver.</summary>
