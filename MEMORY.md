@@ -201,19 +201,6 @@ lesson, generalized to hosted-service registration.
   24 integration — including 3 new `OutboxPublisherTests`), `dotnet build`
   clean (0 warnings), CI green on push.
 
-### Ownership note (2026-09-08)
-
-User's stated preference: substantial backend work should go to a Codex
-Backend agent when one is reachable in-session, with Claude as orchestrator.
-Checked via `ListAgents` this session — no Codex mechanism (agent type, MCP
-server, or CLI) is present here; only local subagent types and unrelated
-Remote Control sessions. Don't assume that's permanent — recheck with
-`ListAgents` at the start of future sessions rather than assuming
-unavailability carries over. When Codex Backend *is* reachable, hand off
-new backend milestones to it rather than implementing them directly;
-finishing a unit Claude already started mid-flight is the documented
-exception, not a general license to keep building backend features solo.
-
 ## M5 — Real-time Dispatch Board (RabbitMQ consumer + SignalR)
 
 - **First real consumer of M4's outbox events.** Chose "dispatch board"
@@ -252,12 +239,83 @@ exception, not a general license to keep building backend features solo.
   the documented workaround since `TestServer` can't do real WebSockets).
   Frontend: lint/typecheck/tests(7)/build/format all green.
 
-### Ownership note update
+## Proof of Delivery uploads (Codex Backend, verified)
 
-Still no Codex mechanism reachable this session (re-checked via
-`ListAgents` before starting M5, per the user's instruction not to assume
-unavailability carries over silently) — same conclusion as the M4 handoff,
-not re-logging further unless that changes.
+- Photo bytes stored in Postgres (`bytea`), not the filesystem — sidesteps
+  both path-traversal (no server filename needed) and the ephemeral-
+  filesystem problem most PaaS hosts have (Render's local disk doesn't
+  survive a restart; Postgres/Neon does). `ProofOfDeliveryPhoto` is
+  deliberately NOT an EF owned entity of `Shipment` — owned collections
+  load eagerly with their owner, and a multi-megabyte blob has no business
+  riding along on every shipment list/detail query. `Shipment.HasProofOfDelivery`
+  is the cheap flag everything else checks instead.
+- Content validated by actual byte signature (JPEG/PNG magic bytes), never
+  the declared `Content-Type` header or filename extension. 5 MB limit.
+  Immutable once attached — a second upload attempt is a 409, not a
+  silent overwrite (evidence integrity).
+- `MarkDelivered` now also appends a `DeliveryAttempt.Successful` record —
+  a real pre-existing gap from the original M2 Shipments work
+  (`DeliveryAttemptOutcome.Successful` existed but nothing ever produced
+  one; only `MarkFailed` appended attempts).
+- Migration `20260908163420_AddProofOfDeliveryPhotos` also renamed the
+  earlier WIP `HasProofOfDelivery` column to the repo's snake_case
+  convention — check that migration if a column name looks off elsewhere.
+
+## Antigravity gap-analysis pass (2026-09-08) — findings and disposition
+
+Cross-referenced docs/ARCHITECTURE.md's claims against actual code. Two
+BLOCKERs, both real, both fixed same-session by Codex Backend (commit
+`52fbbbb`, CI green): (1) `AssignCommandHandler` checked vehicle Active
+status but never driver *busy* status server-side, even though the data
+for it already existed (`GetBusyDriverIdsAsync`) — fixed. (2) no real
+parallel-request test proved the documented "two concurrent assign attempts
+-> one winner, one 409" claim — added
+(`ShipmentEndpointsTests`, `Task.WhenAll` against `/assign`). Everything
+else raised (OpenTelemetry/organizationId/DB-check-constraints/MediatR-
+pipeline-behaviors overclaims, module-count mismatch, POD storage strategy,
+missing `ShipmentReturned` in the event list) was a docs-vs-reality gap,
+not a code bug — corrected directly in docs/ARCHITECTURE.md and README.md
+rather than building the missing pieces, since none of them were blocking
+real product value (see docs/ARCHITECTURE.md's own inline **Actual:**
+notes for the specifics). DB `CHECK` constraints on status enums remains a
+genuine, cheap, not-yet-done strengthening — worth picking up opportunistically,
+not urgent.
+
+## Multi-agent session note (2026-09-08) — Maestri, not just ListAgents
+
+**`ListAgents` does not surface Maestri canvas agents.** Earlier in this
+session two separate prompts asked me to delegate to "Codex Backend" /
+"Codex QA" / "Claude Frontend" / "Antigravity"; I checked `ListAgents`,
+found nothing, and told the user no such mechanism existed. Wrong — this
+project uses the `maestri` skill/CLI (`maestri list`, `maestri ask`,
+`maestri check`), a completely separate channel from `ListAgents`, and all
+four agents were genuinely connected and idle on the canvas the whole time.
+**Load the `maestri` skill and run `maestri list` before ever concluding a
+named agent/worker "doesn't exist" in a session — don't trust `ListAgents`
+alone for that question.** (The canvas's leftover notes were from a prior
+FluxoraERP session on the same canvas — stale content, not evidence of the
+wrong project; `maestri check "<Agent>"` showing this repo's path in each
+agent's prompt is what actually confirmed they were live and correctly
+scoped.)
+
+Ownership going forward, once confirmed reachable: Codex Backend owns
+substantial backend work, Claude (this session) orchestrates + integrates +
+docs, Claude Frontend owns frontend, Antigravity does research/gap-analysis,
+Codex QA reviews stabilized work independently. Don't default back to
+implementing everything solo without re-checking `maestri list` first.
+
+### M4/M5 numbering is unreliable — use names, not numbers
+
+The original M2 Shipments scaffolding's own code comments reserved **M5**
+for Proof-of-Delivery work (`DeliveryAttemptOutcome.Successful`'s doc
+comment said so explicitly). This session's RabbitMQ outbox publisher and
+real-time dispatch board commits are labeled "(M4)" and "(M5)" instead —
+already pushed, can't be renamed without rewriting published history
+(not doing that). The actual scaffolding intent was M4 = outbox publisher
+(this one was right), M5 = Proof of Delivery, and the dispatch board should
+have been M6 or later. **Refer to milestones by name in conversation and
+new docs, not by number** — the numbers in old commit messages are now
+known-unreliable and shouldn't be extended forward.
 
 ## Full spec
 
