@@ -14,6 +14,19 @@ namespace FleetDelivery.Modules.Shipments.Infrastructure.Messaging;
 /// respects <paramref name="stoppingToken"/> throughout — including inside
 /// the batch's own DB calls — so shutdown doesn't wait out a full poll
 /// interval or abandon an in-flight transaction uncommitted-but-unaborted.
+///
+/// Always registered (see <c>AddShipmentsModule</c>) — <see cref="OutboxPublisherOptions.PublisherEnabled"/>
+/// is checked here, inside <see cref="ExecuteAsync"/>, via the properly
+/// DI-resolved <see cref="IOptions{TOptions}"/> rather than at
+/// registration time via raw <c>IConfiguration</c>. That's not a style
+/// preference: <c>IConfiguration</c> read at the top of <c>Program.cs</c>
+/// runs before <c>WebApplicationFactory</c>'s test config overrides are
+/// merged in (same reason the CORS/rate-limiter policies in
+/// <c>Program.cs</c> read their config lazily too), so a registration-time
+/// check would silently miss <c>ShipmentsApiFactory</c>'s override and
+/// start this service against a RabbitMQ broker that test host doesn't
+/// have — see the doc comment on <c>DispatchBoardConsumerHostedService</c>
+/// for the failure mode this caused there.
 /// </summary>
 public sealed class OutboxPublisherHostedService(
     IServiceScopeFactory scopeFactory,
@@ -24,6 +37,13 @@ public sealed class OutboxPublisherHostedService(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        if (!_options.PublisherEnabled)
+        {
+            logger.LogInformation("Outbox publisher disabled (Outbox:PublisherEnabled=false) — not starting.");
+
+            return;
+        }
+
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(_options.PollIntervalSeconds));
 
         logger.LogInformation(

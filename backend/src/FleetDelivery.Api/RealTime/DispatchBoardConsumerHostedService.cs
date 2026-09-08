@@ -30,6 +30,23 @@ namespace FleetDelivery.Api.RealTime;
 /// (configured as the queue's <c>x-dead-letter-exchange</c> argument) —
 /// visible for operator inspection, never retried in a loop, never silently
 /// dropped.
+///
+/// Always registered (see <c>Program.cs</c>) — <see cref="DispatchBoardConsumerOptions.ConsumerEnabled"/>
+/// is checked here, inside <see cref="ExecuteAsync"/>, via the properly
+/// DI-resolved <see cref="IOptions{TOptions}"/>. A registration-time check
+/// against raw <c>IConfiguration</c> (as this originally did) silently
+/// misses <c>WebApplicationFactory</c>'s test config overrides — that
+/// config is merged into the builder only when the real host is built,
+/// which happens after Program.cs's own top-level statements have already
+/// run — so <c>ShipmentsApiFactory</c>'s <c>RealTime:ConsumerEnabled = false</c>
+/// override went unseen, this service started anyway, and its first call
+/// (<see cref="RabbitMqConnectionProvider.CreateChannelAsync"/>, against a
+/// broker that test host doesn't have) threw uncaught out of
+/// <see cref="ExecuteAsync"/> — which, under .NET's default
+/// <c>BackgroundServiceExceptionBehavior.StopHost</c>, crashed the entire
+/// test host for every test using that factory, not just this one. Checking
+/// the properly-bound option first avoids the whole class of bug — it's
+/// unaffected by when the connection is actually attempted.
 /// </summary>
 public sealed class DispatchBoardConsumerHostedService(
     RabbitMqConnectionProvider connectionProvider,
@@ -44,39 +61,84 @@ public sealed class DispatchBoardConsumerHostedService(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _channel = await connectionProvider.CreateChannelAsync(stoppingToken);
+        if (!_options.ConsumerEnabled)
+        {
+            logger.LogInformation("Dispatch board consumer disabled (RealTime:ConsumerEnabled=false) — not starting.");
 
-        await _channel.ExchangeDeclareAsync(ExchangeName, ExchangeType.Topic, durable: true, autoDelete: false, cancellationToken: stoppingToken);
+            return;
+        }
 
-        // Fanout: every failed message goes to the same DLQ regardless of
-        // its original routing key — there's exactly one consumer's worth
-        // of dead letters to collect right now, no need for topic-shaped
-        // dead-letter routing until a second consumer justifies it.
-        await _channel.ExchangeDeclareAsync(_options.DeadLetterExchangeName, ExchangeType.Fanout, durable: true, autoDelete: false, cancellationToken: stoppingToken);
-        await _channel.QueueDeclareAsync(_options.DeadLetterQueueName, durable: true, exclusive: false, autoDelete: false, cancellationToken: stoppingToken);
-        await _channel.QueueBindAsync(_options.DeadLetterQueueName, _options.DeadLetterExchangeName, routingKey: string.Empty, cancellationToken: stoppingToken);
+        // Bounded-backoff retry around the one-time setup (connect, declare
+        // topology, register the consumer) — a RabbitMQ outage at process
+        // startup (e.g. the broker container isn't up yet) must not crash
+        // the whole API host via BackgroundServiceExceptionBehavior.StopHost.
+        // Once BasicConsumeAsync succeeds, RabbitMqConnectionProvider's
+        // AutomaticRecoveryEnabled connection handles resilience for drops
+        // after that — this loop is purely for "never got connected yet".
+        var attempt = 0;
 
-        await _channel.QueueDeclareAsync(
-            _options.QueueName,
-            durable: true,
-            exclusive: false,
-            autoDelete: false,
-            arguments: new Dictionary<string, object?> { ["x-dead-letter-exchange"] = _options.DeadLetterExchangeName },
-            cancellationToken: stoppingToken);
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                _channel = await connectionProvider.CreateChannelAsync(stoppingToken);
 
-        await _channel.QueueBindAsync(_options.QueueName, ExchangeName, _options.RoutingPattern, cancellationToken: stoppingToken);
+                await _channel.ExchangeDeclareAsync(ExchangeName, ExchangeType.Topic, durable: true, autoDelete: false, cancellationToken: stoppingToken);
 
-        // One in-flight message at a time is plenty for a stateless
-        // broadcast — no reason to let the broker push a flood of unacked
-        // deliveries at this consumer.
-        await _channel.BasicQosAsync(prefetchSize: 0, prefetchCount: 1, global: false, cancellationToken: stoppingToken);
+                // Fanout: every failed message goes to the same DLQ regardless
+                // of its original routing key — there's exactly one consumer's
+                // worth of dead letters to collect right now, no need for
+                // topic-shaped dead-letter routing until a second consumer
+                // justifies it.
+                await _channel.ExchangeDeclareAsync(_options.DeadLetterExchangeName, ExchangeType.Fanout, durable: true, autoDelete: false, cancellationToken: stoppingToken);
+                await _channel.QueueDeclareAsync(_options.DeadLetterQueueName, durable: true, exclusive: false, autoDelete: false, cancellationToken: stoppingToken);
+                await _channel.QueueBindAsync(_options.DeadLetterQueueName, _options.DeadLetterExchangeName, routingKey: string.Empty, cancellationToken: stoppingToken);
 
-        var consumer = new AsyncEventingBasicConsumer(_channel);
-        consumer.ReceivedAsync += OnMessageReceivedAsync;
+                await _channel.QueueDeclareAsync(
+                    _options.QueueName,
+                    durable: true,
+                    exclusive: false,
+                    autoDelete: false,
+                    arguments: new Dictionary<string, object?> { ["x-dead-letter-exchange"] = _options.DeadLetterExchangeName },
+                    cancellationToken: stoppingToken);
 
-        await _channel.BasicConsumeAsync(_options.QueueName, autoAck: false, consumer, stoppingToken);
+                await _channel.QueueBindAsync(_options.QueueName, ExchangeName, _options.RoutingPattern, cancellationToken: stoppingToken);
 
-        logger.LogInformation("Dispatch board consumer started on queue {QueueName}.", _options.QueueName);
+                // One in-flight message at a time is plenty for a stateless
+                // broadcast — no reason to let the broker push a flood of
+                // unacked deliveries at this consumer.
+                await _channel.BasicQosAsync(prefetchSize: 0, prefetchCount: 1, global: false, cancellationToken: stoppingToken);
+
+                var consumer = new AsyncEventingBasicConsumer(_channel);
+                consumer.ReceivedAsync += OnMessageReceivedAsync;
+
+                await _channel.BasicConsumeAsync(_options.QueueName, autoAck: false, consumer, stoppingToken);
+
+                logger.LogInformation("Dispatch board consumer started on queue {QueueName}.", _options.QueueName);
+
+                break;
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                attempt++;
+                var delay = TimeSpan.FromSeconds(Math.Min(2 * Math.Pow(2, Math.Min(attempt, 8)), 60));
+
+                logger.LogError(ex, "Dispatch board consumer failed to start (attempt {Attempt}) — retrying in {Delay}.", attempt, delay);
+
+                try
+                {
+                    await Task.Delay(delay, stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    return;
+                }
+            }
+        }
 
         try
         {

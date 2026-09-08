@@ -65,12 +65,12 @@ try
     // M5: broadcasts M4's outbox events to the dispatch board in real time.
     // Reuses Shipments' RabbitMqConnectionProvider (already DI-registered by
     // AddShipmentsModule) rather than opening a second broker connection.
+    // Always registered — DispatchBoardConsumerOptions.ConsumerEnabled is
+    // checked inside the hosted service's own ExecuteAsync, not here; see
+    // its doc comment for why a registration-time IConfiguration check
+    // silently misses WebApplicationFactory's test config overrides.
     builder.Services.Configure<DispatchBoardConsumerOptions>(builder.Configuration.GetSection(DispatchBoardConsumerOptions.SectionName));
-
-    if (builder.Configuration.GetValue($"{DispatchBoardConsumerOptions.SectionName}:ConsumerEnabled", true))
-    {
-        builder.Services.AddHostedService<DispatchBoardConsumerHostedService>();
-    }
+    builder.Services.AddHostedService<DispatchBoardConsumerHostedService>();
 
     const string FrontendCorsPolicy = "Frontend";
 

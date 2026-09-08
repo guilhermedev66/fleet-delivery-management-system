@@ -29,6 +29,37 @@ Only what's expensive to re-derive. Not a changelog.
   them. This project's own instructions are the more specific, deliberate
   choice and take precedence for this repo.
 
+## WebApplicationFactory + IHostedService gotcha (found via CI failure, M5)
+
+**Never gate `AddHostedService<T>()` registration on a raw `IConfiguration`
+read at `Program.cs`'s top level.** `WebApplicationFactory`'s test config
+overrides (`ConfigureWebHost` -> `ConfigureAppConfiguration`) are merged in
+when the real host is built — which happens *after* `Program.cs`'s own
+top-level statements have already executed (`HostFactoryResolver` replays
+the original entry point to capture the builder, then WebApplicationFactory
+applies its overrides to that captured builder, then calls the real
+`Build()`). So `builder.Configuration.GetValue(...)` read directly in
+`Program.cs` sees only the original config sources — never a test factory's
+override — while `IOptions<T>` (via `services.Configure<T>(section)`)
+resolves lazily at DI-construction time, *after* the real `Build()`, and
+correctly sees the merged config. Symptom when this goes wrong: a hosted
+service starts in a test host that deliberately has no broker/dependency
+for it, throws inside `ExecuteAsync`, and — under .NET's default
+`BackgroundServiceExceptionBehavior.StopHost` — crashes the *entire* test
+host, failing every test built on that factory with a misleading "Server
+hasn't been initialized yet" from `WebApplicationFactory.CreateClient()`.
+Passed locally, only broke on CI (a timing race in how fast the failed
+connection attempt outraced `WebApplicationFactory`'s own startup — not
+reliably reproducible, don't try to chase it locally).
+
+**Fix, applied to both `OutboxPublisherHostedService` and
+`DispatchBoardConsumerHostedService`**: always register the hosted service;
+check the enable/disable flag as the *first* thing inside `ExecuteAsync`,
+via the properly-injected `IOptions<T>`, and return immediately if
+disabled. The CORS/rate-limiter config reads in `Program.cs` already
+avoided this exact pitfall (see their inline comments) — this is the same
+lesson, generalized to hosted-service registration.
+
 ## Environment notes
 
 - Bare `docker` in WSL2 refuses to run (its wrapper script checks for

@@ -41,17 +41,12 @@ public static class DependencyInjection
         services.AddSingleton<IIntegrationEventPublisher, RabbitMqIntegrationEventPublisher>();
         services.AddScoped<OutboxBatchProcessor>();
 
-        // Off in test hosts that don't spin up a RabbitMQ container (see
-        // ShipmentsApiFactory) — on everywhere else, including local dev via
-        // docker-compose. Read directly rather than through the options
-        // pipeline since this decides whether to register a hosted service
-        // at all, before any IOptions<T> would be resolvable.
-        var publisherEnabled = configuration.GetValue($"{OutboxPublisherOptions.SectionName}:PublisherEnabled", true);
-
-        if (publisherEnabled)
-        {
-            services.AddHostedService<OutboxPublisherHostedService>();
-        }
+        // Always registered — OutboxPublisherHostedService checks
+        // OutboxPublisherOptions.PublisherEnabled itself, inside
+        // ExecuteAsync, via the DI-resolved IOptions<T> (see its own doc
+        // comment for why a registration-time IConfiguration read here
+        // would silently miss WebApplicationFactory's test overrides).
+        services.AddHostedService<OutboxPublisherHostedService>();
 
         return services;
     }
