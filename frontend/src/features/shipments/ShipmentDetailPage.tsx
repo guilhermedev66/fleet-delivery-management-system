@@ -506,7 +506,7 @@ export function ShipmentDetailPage() {
         <div className="flex flex-col gap-3">
           <h2 className="text-sm font-semibold">Actions</h2>
           <div className="flex flex-wrap gap-3">
-            {isDispatcher && shipment.status === 'Draft' && (
+            {isDispatcher && (shipment.status === 'Draft' || shipment.status === 'Rescheduled') && (
               <ReadyForDispatchAction shipment={shipment} />
             )}
             {isDispatcher && shipment.status === 'ReadyForDispatch' && (

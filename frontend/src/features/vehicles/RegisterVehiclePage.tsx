@@ -7,7 +7,7 @@ import { useRegisterVehicle } from './hooks'
 const VEHICLE_TYPES: VehicleType[] = ['Van', 'Truck', 'Motorcycle', 'Car']
 
 const INPUT_CLASS =
-  'rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]'
+  'rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus:border-[var(--color-accent)]'
 
 export function RegisterVehiclePage() {
   const navigate = useNavigate()
@@ -48,10 +48,14 @@ export function RegisterVehiclePage() {
             id="plateNumber"
             value={plateNumber}
             onChange={(event) => setPlateNumber(event.target.value)}
+            aria-invalid={touched && Boolean(plateNumberError)}
+            aria-describedby={touched && plateNumberError ? 'plateNumber-error' : undefined}
             className={INPUT_CLASS}
           />
           {touched && plateNumberError && (
-            <p className="text-xs text-[var(--color-danger)]">{plateNumberError}</p>
+            <p id="plateNumber-error" className="text-xs text-[var(--color-danger)]">
+              {plateNumberError}
+            </p>
           )}
         </div>
 
@@ -83,10 +87,14 @@ export function RegisterVehiclePage() {
             min="0"
             value={capacityKg}
             onChange={(event) => setCapacityKg(event.target.value)}
+            aria-invalid={touched && Boolean(capacityError)}
+            aria-describedby={touched && capacityError ? 'capacityKg-error' : undefined}
             className={INPUT_CLASS}
           />
           {touched && capacityError && (
-            <p className="text-xs text-[var(--color-danger)]">{capacityError}</p>
+            <p id="capacityKg-error" className="text-xs text-[var(--color-danger)]">
+              {capacityError}
+            </p>
           )}
         </div>
 

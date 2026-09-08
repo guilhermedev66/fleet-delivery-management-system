@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { cx } from '../lib/utils'
 import { useTheme } from './useTheme'
@@ -44,6 +44,17 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
 export function AppShell() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const { theme, toggleTheme } = useTheme()
+  const openButtonRef = useRef<HTMLButtonElement>(null)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
+
+  function closeDrawer() {
+    setDrawerOpen(false)
+    openButtonRef.current?.focus()
+  }
+
+  useEffect(() => {
+    if (drawerOpen) closeButtonRef.current?.focus()
+  }, [drawerOpen])
 
   return (
     <div className="flex min-h-svh">
@@ -57,33 +68,45 @@ export function AppShell() {
 
       {/* Mobile drawer */}
       {drawerOpen && (
-        <div className="fixed inset-0 z-40 md:hidden">
+        <div
+          className="fixed inset-0 z-40 md:hidden"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') closeDrawer()
+          }}
+        >
           <button
             type="button"
             aria-label="Close navigation"
             className="absolute inset-0 bg-black/40"
-            onClick={() => setDrawerOpen(false)}
+            onClick={closeDrawer}
           />
-          <aside className="relative z-50 h-full w-64 bg-[var(--color-bg)] shadow-lg">
+          <aside
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation"
+            className="relative z-50 h-full w-64 bg-[var(--color-bg)] shadow-lg"
+          >
             <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-4">
               <p className="text-sm font-semibold">Fleet & Delivery</p>
               <button
+                ref={closeButtonRef}
                 type="button"
                 aria-label="Close navigation"
                 className="text-[var(--color-text-muted)]"
-                onClick={() => setDrawerOpen(false)}
+                onClick={closeDrawer}
               >
                 ✕
               </button>
             </div>
-            <NavLinks onNavigate={() => setDrawerOpen(false)} />
+            <NavLinks onNavigate={closeDrawer} />
           </aside>
         </div>
       )}
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col" inert={drawerOpen}>
         <header className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3">
           <button
+            ref={openButtonRef}
             type="button"
             aria-label="Open navigation"
             className="rounded-md border border-[var(--color-border)] px-2 py-1 text-sm md:hidden"

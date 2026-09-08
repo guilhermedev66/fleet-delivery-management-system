@@ -22,15 +22,24 @@ function formatTime(iso: string): string {
 
 export function DispatchBoardPage() {
   const { events, status } = useDispatchEvents()
+  const latestEvent = events[0]
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold">Dispatch Board</h1>
-        <div className="flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex items-center gap-2 text-sm text-[var(--color-text-muted)]"
+        >
           <span aria-hidden className={`h-2 w-2 rounded-full ${STATUS_DOT_CLASS[status]}`} />
           {STATUS_LABEL[status]}
         </div>
+        {/* Visually hidden: announces each new event without re-reading the whole list. */}
+        <span className="sr-only" role="status" aria-live="polite">
+          {latestEvent ? describeEvent(latestEvent).label : ''}
+        </span>
       </div>
 
       <p className="text-sm text-[var(--color-text-muted)]">
@@ -61,9 +70,9 @@ export function DispatchBoardPage() {
 
             const row = (
               <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--color-border)] px-4 py-3 hover:bg-[var(--color-bg-subtle)]">
-                <div className="flex flex-col gap-0.5">
+                <div className="flex min-w-0 flex-col gap-0.5">
                   <span className="text-sm font-medium">{label}</span>
-                  <span className="text-xs text-[var(--color-text-muted)]">{subject}</span>
+                  <span className="truncate text-xs text-[var(--color-text-muted)]">{subject}</span>
                 </div>
                 <span className="shrink-0 text-xs text-[var(--color-text-muted)]">
                   {formatTime(event.occurredAt)}

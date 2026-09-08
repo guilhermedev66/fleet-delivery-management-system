@@ -35,4 +35,19 @@ describe('LoginPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/invalid email or password/i)
     expect(screen.getByRole('button', { name: /sign in/i })).not.toBeDisabled()
   })
+
+  it('shows a connectivity message instead of "invalid credentials" when the server is unreachable', async () => {
+    vi.spyOn(authApi, 'login').mockRejectedValue(
+      new ApiError(0, 'Unable to reach the server. Check your connection and try again.'),
+    )
+    const user = userEvent.setup()
+
+    renderLoginPage()
+
+    await user.type(screen.getByLabelText(/email/i), 'driver@example.com')
+    await user.type(screen.getByLabelText(/password/i), 'whatever')
+    await user.click(screen.getByRole('button', { name: /sign in/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/unable to reach the server/i)
+  })
 })

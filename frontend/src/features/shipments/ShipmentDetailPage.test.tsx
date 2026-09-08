@@ -94,3 +94,29 @@ describe('ShipmentDetailPage assign action', () => {
     expect((availableOption as HTMLOptionElement).disabled).toBe(false)
   })
 })
+
+describe('ShipmentDetailPage rescheduled shipment', () => {
+  it('lets a dispatcher put a rescheduled shipment back up for dispatch', async () => {
+    useAuthStore.setState({
+      status: 'authenticated',
+      accessToken: 'token',
+      accessTokenExpiresAt: null,
+      user: {
+        id: 'dispatcher-1',
+        email: 'dispatcher@example.com',
+        fullName: 'Dana',
+        role: 'Dispatcher',
+      },
+    })
+
+    vi.spyOn(shipmentsApi, 'getShipment').mockResolvedValue({
+      ...SHIPMENT,
+      status: 'Rescheduled',
+    })
+    vi.spyOn(shipmentsApi, 'getShipmentTimeline').mockResolvedValue({ events: [] })
+
+    renderDetailPage()
+
+    expect(await screen.findByRole('button', { name: /ready for dispatch/i })).toBeInTheDocument()
+  })
+})

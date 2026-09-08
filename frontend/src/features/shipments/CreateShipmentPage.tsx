@@ -28,7 +28,7 @@ const ADDRESS_FIELDS: Array<{ key: keyof AddressFormValues; label: string }> = [
 ]
 
 const INPUT_CLASS =
-  'rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]'
+  'rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus:border-[var(--color-accent)]'
 
 function validateAddress(
   address: AddressFormValues,
@@ -72,9 +72,15 @@ function AddressFieldset({
                 id={id}
                 value={value[key]}
                 onChange={(event) => setField(key, event.target.value)}
+                aria-invalid={Boolean(errors[key])}
+                aria-describedby={errors[key] ? `${id}-error` : undefined}
                 className={INPUT_CLASS}
               />
-              {errors[key] && <p className="text-xs text-[var(--color-danger)]">{errors[key]}</p>}
+              {errors[key] && (
+                <p id={`${id}-error`} className="text-xs text-[var(--color-danger)]">
+                  {errors[key]}
+                </p>
+              )}
             </div>
           )
         })}
@@ -128,10 +134,14 @@ export function CreateShipmentPage() {
               id="recipientName"
               value={recipientName}
               onChange={(event) => setRecipientName(event.target.value)}
+              aria-invalid={touched && Boolean(recipientNameError)}
+              aria-describedby={touched && recipientNameError ? 'recipientName-error' : undefined}
               className={INPUT_CLASS}
             />
             {touched && recipientNameError && (
-              <p className="text-xs text-[var(--color-danger)]">{recipientNameError}</p>
+              <p id="recipientName-error" className="text-xs text-[var(--color-danger)]">
+                {recipientNameError}
+              </p>
             )}
           </div>
           <div className="flex flex-1 flex-col gap-1">
@@ -142,10 +152,14 @@ export function CreateShipmentPage() {
               id="recipientPhone"
               value={recipientPhone}
               onChange={(event) => setRecipientPhone(event.target.value)}
+              aria-invalid={touched && Boolean(recipientPhoneError)}
+              aria-describedby={touched && recipientPhoneError ? 'recipientPhone-error' : undefined}
               className={INPUT_CLASS}
             />
             {touched && recipientPhoneError && (
-              <p className="text-xs text-[var(--color-danger)]">{recipientPhoneError}</p>
+              <p id="recipientPhone-error" className="text-xs text-[var(--color-danger)]">
+                {recipientPhoneError}
+              </p>
             )}
           </div>
         </div>

@@ -1,4 +1,4 @@
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getMe, login as loginRequest, logout as logoutRequest, refresh } from '../../lib/api/auth'
@@ -58,13 +58,17 @@ export function useLogin() {
 export function useLogout() {
   const clear = useAuthStore((state) => state.clear)
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: logoutRequest,
     onSettled: () => {
       // Clear client-side state and redirect even if the API call itself
       // failed (e.g. network hiccup) — the user's intent is to be logged out.
+      // Also drop every cached query so a different user signing in on the
+      // same tab never flashes the previous user's data before refetching.
       clear()
+      queryClient.clear()
       navigate('/login', { replace: true })
     },
   })

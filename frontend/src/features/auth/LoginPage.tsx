@@ -4,6 +4,14 @@ import { ApiError } from '../../lib/api/client'
 import { useAuthStore } from './authStore'
 import { useLogin } from './hooks'
 
+function getLoginErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 401) return 'Invalid email or password.'
+    if (error.status === 0) return error.message
+  }
+  return 'Something went wrong. Please try again.'
+}
+
 export function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -26,7 +34,7 @@ export function LoginPage() {
         <h1 className="text-lg font-semibold">Fleet & Delivery Management System</h1>
         <p className="mt-1 text-sm text-[var(--color-text-muted)]">Sign in to continue.</p>
 
-        <form className="mt-6 flex flex-col gap-4" onSubmit={handleSubmit} noValidate>
+        <form className="mt-6 flex flex-col gap-4" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-1">
             <label htmlFor="email" className="text-sm font-medium">
               Email
@@ -39,7 +47,9 @@ export function LoginPage() {
               required
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
+              aria-invalid={login.isError || undefined}
+              aria-describedby={login.isError ? 'login-error' : undefined}
+              className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus:border-[var(--color-accent)]"
             />
           </div>
 
@@ -55,15 +65,15 @@ export function LoginPage() {
               required
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
+              aria-invalid={login.isError || undefined}
+              aria-describedby={login.isError ? 'login-error' : undefined}
+              className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus:border-[var(--color-accent)]"
             />
           </div>
 
           {login.isError && (
-            <p role="alert" className="text-sm text-[var(--color-danger)]">
-              {login.error instanceof ApiError
-                ? 'Invalid email or password.'
-                : 'Something went wrong. Please try again.'}
+            <p id="login-error" role="alert" className="text-sm text-[var(--color-danger)]">
+              {getLoginErrorMessage(login.error)}
             </p>
           )}
 

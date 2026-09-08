@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import { DispatchBoardPage } from './DispatchBoardPage'
@@ -48,8 +48,28 @@ describe('DispatchBoardPage', () => {
       })
     })
 
-    expect(screen.getByText('Shipment created')).toBeInTheDocument()
-    expect(screen.getByText('TRK-001')).toBeInTheDocument()
+    const list = screen.getByRole('list')
+    expect(within(list).getByText('Shipment created')).toBeInTheDocument()
+    expect(within(list).getByText('TRK-001')).toBeInTheDocument()
     expect(screen.queryByText(/no activity yet/i)).not.toBeInTheDocument()
+  })
+
+  it('announces new events in a visually-hidden live region for screen readers', async () => {
+    renderPage()
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    act(() => {
+      handlers.shipmentEvent({
+        type: 'ShipmentCreated',
+        occurredAt: new Date().toISOString(),
+        data: { shipmentId: 'shipment-1', trackingNumber: 'TRK-001' },
+      })
+    })
+
+    const statusRegions = screen.getAllByRole('status')
+    expect(statusRegions.some((region) => region.textContent === 'Shipment created')).toBe(true)
   })
 })
