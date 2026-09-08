@@ -7,40 +7,43 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Testcontainers.PostgreSql;
+using Testcontainers.RabbitMq;
 
 namespace FleetDelivery.IntegrationTests.Infrastructure;
 
 /// <summary>
-/// Same shape as <see cref="IdentityApiFactory"/> (Testcontainers Postgres +
-/// the real <c>FleetDelivery.Api</c> host in Development, so its own
-/// auto-migrate path sets up all three schemas), plus a helper to seed
-/// non-Admin users (Dispatcher, Driver) directly via
-/// <see cref="IUserRepository"/> — there's no self-registration endpoint, and
-/// <c>IdentityDevSeeder</c> only ever seeds one Admin.
-///
-/// The Outbox publisher hosted service is disabled here (<c>Outbox:PublisherEnabled = false</c>)
-/// — this factory spins up no RabbitMQ container, and most tests using it
-/// don't exercise messaging at all. <see cref="OutboxPublisherApiFactory"/>
-/// is the one that does.
+/// Same shape as <see cref="ShipmentsApiFactory"/>, plus a real, disposable
+/// RabbitMQ broker (Testcontainers) so M4's publisher tests can exercise a
+/// genuine publish, not a mock. The hosted <c>OutboxPublisherHostedService</c>
+/// is still disabled (<c>Outbox:PublisherEnabled = false</c>) even here —
+/// tests resolve <c>OutboxBatchProcessor</c> directly and call
+/// <c>ProcessBatchAsync</c> on their own schedule, for determinism (no
+/// waiting out a poll interval, no flakiness from a background timer racing
+/// test assertions).
 /// </summary>
-public sealed class ShipmentsApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
+public sealed class OutboxPublisherApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     public const string DefaultPassword = "Dev!Passw0rd123";
 
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithDatabase("fleet_delivery_test")
+        .WithDatabase("fleet_delivery_outbox_test")
+        .WithUsername("fleet_test")
+        .WithPassword("fleet_test_password")
+        .Build();
+
+    private readonly RabbitMqContainer _rabbitMq = new RabbitMqBuilder("rabbitmq:3.13-management-alpine")
         .WithUsername("fleet_test")
         .WithPassword("fleet_test_password")
         .Build();
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
+        await Task.WhenAll(_postgres.StartAsync(), _rabbitMq.StartAsync());
     }
 
     async Task IAsyncLifetime.DisposeAsync()
     {
-        await _postgres.StopAsync();
+        await Task.WhenAll(_postgres.StopAsync(), _rabbitMq.StopAsync());
         await base.DisposeAsync();
     }
 
@@ -60,15 +63,19 @@ public sealed class ShipmentsApiFactory : WebApplicationFactory<Program>, IAsync
                 ["RateLimiting:Login:PermitLimit"] = "1000",
                 ["RateLimiting:Login:WindowSeconds"] = "60",
                 ["Outbox:PublisherEnabled"] = "false",
+                ["RabbitMq:Host"] = _rabbitMq.Hostname,
+                ["RabbitMq:Port"] = _rabbitMq.GetMappedPublicPort(5672).ToString(),
+                ["RabbitMq:Username"] = "fleet_test",
+                ["RabbitMq:Password"] = "fleet_test_password",
             });
         });
     }
 
-    public IdentityDbContext CreateIdentityDbContext() => Services.CreateScope().ServiceProvider.GetRequiredService<IdentityDbContext>();
-
     public ShipmentsDbContext CreateShipmentsDbContext() => Services.CreateScope().ServiceProvider.GetRequiredService<ShipmentsDbContext>();
 
-    /// <summary>Seeds a user with the given role directly via <see cref="IUserRepository"/> and returns their credentials for logging in through the real <c>/api/auth/login</c> endpoint.</summary>
+    public string RabbitMqConnectionString => _rabbitMq.GetConnectionString();
+
+    /// <summary>Same helper as <see cref="ShipmentsApiFactory.CreateUserAsync"/> — duplicated rather than shared because the two factories intentionally don't share a base class (different container sets).</summary>
     public async Task<(Guid Id, string Email, string Password)> CreateUserAsync(Role role, string? fullName = null)
     {
         using var scope = Services.CreateScope();

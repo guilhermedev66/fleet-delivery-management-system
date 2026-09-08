@@ -24,4 +24,16 @@ public sealed class OutboxMessage
 
     /// <summary>Last publish error, if any. Populated on failure, left null on success.</summary>
     public string? Error { get; set; }
+
+    /// <summary>Number of publish attempts made so far (0 = never attempted). Drives the backoff delay in <see cref="NextAttemptOn"/> — see <c>OutboxBatchProcessor</c>.</summary>
+    public int AttemptCount { get; set; }
+
+    /// <summary>
+    /// Earliest time this row is eligible to be claimed again after a failed
+    /// attempt (null = eligible immediately, the normal case for a
+    /// never-attempted row). Never left permanently unreachable — the
+    /// backoff delay is capped, not the attempt count, so a row always stays
+    /// retryable (no message is ever silently given up on).
+    /// </summary>
+    public DateTimeOffset? NextAttemptOn { get; set; }
 }

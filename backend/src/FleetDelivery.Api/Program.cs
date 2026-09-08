@@ -135,7 +135,8 @@ try
     });
 
     builder.Services.AddHealthChecks()
-        .AddCheck<IdentityDbHealthCheck>("identity-db");
+        .AddCheck<IdentityDbHealthCheck>("identity-db")
+        .AddCheck<RabbitMqHealthCheck>("rabbitmq");
 
     var app = builder.Build();
 

@@ -153,18 +153,72 @@ see the doc comment on `Shipment` for why, and
 [`ShipmentEndpointsTests`](../tests/FleetDelivery.IntegrationTests/Shipments/ShipmentEndpointsTests.cs)
 for a real (not mocked) stale-version-returns-409 test.
 
-### Outbox: written, not yet published
+### Outbox: written AND published (M4)
 
 `ShipmentsDbContext.SaveChangesAsync` is overridden to walk every tracked
 aggregate's pending domain events and write one `OutboxMessage` row per
 event to its own `shipments.outbox_messages` table, in the same
 `SaveChanges` call/transaction as the state change — see the doc comment on
-`ShipmentsDbContext`. **No RabbitMQ publisher runs against these rows yet**
-(that's M4 scope): they sit with `ProcessedOn = null` indefinitely until a
-background publisher is added. This module's Outbox table is deliberately
-its own copy rather than shared with Identity's schema — Identity doesn't
-have Outbox wiring yet either, and sharing one table across module schemas
-is a bridge to cross once a second module actually needs it (YAGNI).
+`ShipmentsDbContext`. This module's Outbox table is deliberately its own
+copy rather than shared with Identity's schema — Identity doesn't have
+Outbox wiring yet either, and sharing one table across module schemas is a
+bridge to cross once a second module actually needs it (YAGNI).
+
+`OutboxPublisherHostedService` (a `BackgroundService`, registered by
+`AddShipmentsModule`) polls that table and drains it to RabbitMQ's
+`fleet.events` topic exchange. See
+[`src/Modules/Shipments/FleetDelivery.Modules.Shipments.Infrastructure/Messaging/`](src/Modules/Shipments/FleetDelivery.Modules.Shipments.Infrastructure/Messaging/)
+for the implementation; the short version:
+
+- **Claiming strategy: `SELECT ... FOR UPDATE SKIP LOCKED`**, inside an
+  explicit transaction (`OutboxBatchProcessor.ProcessBatchAsync`). Two
+  processors racing the same poll (two threads, or the same code running in
+  two app instances) never claim the same row — the loser's `SELECT` simply
+  skips whatever the winner already locked. No separate lease/claimed-by
+  column: the Postgres row lock *is* the claim, and it's released
+  automatically if the process crashes mid-batch (the transaction never
+  commits), so a crash between claiming and publishing just leaves the row
+  to be claimed again next poll — never stuck, never lost. Covered by
+  `OutboxPublisherTests.Two_concurrent_batch_processors_never_publish_the_same_row_twice`
+  against real concurrent processors, not a single-threaded assumption.
+- **Retry**: a failed publish increments `AttemptCount`, records `Error`,
+  and sets `NextAttemptOn` to an exponential backoff capped at
+  `Outbox:MaxBackoffSeconds` (default 300s) — a persistently-failing row is
+  retried at most that often, **never abandoned** (no message is ever
+  silently given up on; there's no dead-letter step on the publisher side,
+  since nothing has rejected the message — it just hasn't been sent yet).
+- **At-least-once delivery**: if the process crashes after a successful
+  RabbitMQ publish but before the row is marked `ProcessedOn` (committed),
+  the row is reclaimed and republished on restart — a duplicate delivery,
+  not a lost one. This is why `IntegrationEventEnvelope.MessageId` is the
+  outbox row's own id: a consumer's Inbox pattern (see
+  docs/ARCHITECTURE.md's "Idempotent consumers") keys off exactly this id to
+  no-op a redelivery. No consumer exists yet in this milestone — this is the
+  contract the first one must honor.
+- **Envelope**: `{ messageId, type, occurredAt, correlationId, data }`
+  (camelCase, matching every other JSON contract this API emits), published
+  `Persistent` to the durable `fleet.events` topic exchange under a routing
+  key derived from the event type (`ShipmentIntegrationEventRoutingKeys`,
+  e.g. `DeliveryCompleted` -> `shipment.delivered`, per
+  docs/ARCHITECTURE.md's topic naming). `correlationId` is currently
+  self-referential (same value as `messageId`) — no request-scoped
+  correlation id is threaded through commands yet; that's future work
+  alongside real distributed tracing, not fabricated here.
+- **Connection resilience**: `RabbitMqConnectionProvider` holds one
+  long-lived `IConnection` per process with
+  `AutomaticRecoveryEnabled`/`TopologyRecoveryEnabled` — reconnects after a
+  dropped connection without a hand-rolled retry loop.
+- **No consumer queues or DLQ declared by the publisher.** Declaring the
+  exchange is the publisher's job; binding queues (and any dead-lettering
+  for messages a *consumer* rejects) is whichever module adds the first real
+  consumer's job — not manufactured speculatively here.
+- **Disabled in most integration tests** (`Outbox:PublisherEnabled = false`,
+  set by `ShipmentsApiFactory`) — those tests don't spin up a RabbitMQ
+  container and don't exercise messaging.
+  [`OutboxPublisherApiFactory`](../backend/tests/FleetDelivery.IntegrationTests/Infrastructure/OutboxPublisherApiFactory.cs)
+  is the one that does (Postgres + RabbitMQ via Testcontainers), and its
+  tests call `OutboxBatchProcessor.ProcessBatchAsync` directly rather than
+  waiting on the hosted service's poll timer, for determinism.
 
 ### Shipments module — EF Core migrations
 
@@ -247,6 +301,12 @@ shouldn't be tracked at all).
 | `Cors:AllowedOrigin` | Single allowed frontend origin (default dev value: `http://localhost:5173`) |
 | `RateLimiting:Login:PermitLimit` | Requests/window allowed on `POST /api/auth/login` per client IP (default: `5`) |
 | `RateLimiting:Login:WindowSeconds` | Window size in seconds (default: `60`) |
+| `RabbitMq:Host` / `Port` / `Username` / `Password` / `VirtualHost` | Broker connection (`Port` default `5672`, `VirtualHost` default `/`) |
+| `RabbitMq:ExchangeName` | Topic exchange every integration event publishes to (default `fleet.events`) |
+| `Outbox:PublisherEnabled` | Whether `OutboxPublisherHostedService` runs at all (default `true`; test hosts without a RabbitMQ container set this `false`) |
+| `Outbox:PollIntervalSeconds` | How often the publisher polls for unprocessed rows (default `2`) |
+| `Outbox:BatchSize` | Max rows claimed per poll (default `20`) |
+| `Outbox:MaxBackoffSeconds` | Ceiling on a failing row's retry backoff (default `300`) |
 
 ## Auth: tokens, cookies, rotation
 
@@ -293,6 +353,16 @@ dotnet test FleetDelivery.sln
   `Delivered` rejects every further transition); `Vehicle.Register`'s
   validation (normalizes the plate number, rejects an empty one or a
   non-positive capacity). No external dependencies.
+- **`OutboxPublisherTests`** (in `FleetDelivery.IntegrationTests`, via
+  `OutboxPublisherApiFactory` — Postgres + a real, disposable RabbitMQ
+  broker via Testcontainers): creating a shipment's outbox row actually gets
+  delivered to a real queue bound to `fleet.events` under
+  `shipment.created`, with the documented envelope shape; a publish failure
+  leaves the row unprocessed with `AttemptCount`/`Error`/`NextAttemptOn` set
+  and — critically — is **not** reclaimed before `NextAttemptOn`; and two
+  concurrent `OutboxBatchProcessor`s racing the same rows never publish the
+  same message twice (real proof of the `FOR UPDATE SKIP LOCKED` claiming
+  strategy, not an assumption).
 - **`FleetDelivery.ArchitectureTests`** — NetArchTest rules: Identity.Domain,
   Shipments.Domain, and Vehicles.Domain have no dependency on their own
   module's Infrastructure, ASP.NET Core, or EF Core; same for each module's

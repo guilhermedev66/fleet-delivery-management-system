@@ -35,5 +35,20 @@ public sealed class OutboxMessageConfiguration : IEntityTypeConfiguration<Outbox
 
         builder.Property(m => m.Error)
             .HasColumnName("error");
+
+        builder.Property(m => m.AttemptCount)
+            .HasColumnName("attempt_count")
+            .HasDefaultValue(0)
+            .IsRequired();
+
+        builder.Property(m => m.NextAttemptOn)
+            .HasColumnName("next_attempt_on");
+
+        // Partial index: only unprocessed rows are ever queried by the
+        // publisher, and that set stays small relative to the full history
+        // an index over the whole table would otherwise have to cover.
+        builder.HasIndex(m => new { m.OccurredOn, m.NextAttemptOn })
+            .HasFilter("processed_on IS NULL")
+            .HasDatabaseName("ix_outbox_messages_unprocessed");
     }
 }

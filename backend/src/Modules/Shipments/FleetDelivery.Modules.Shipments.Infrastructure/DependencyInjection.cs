@@ -1,4 +1,6 @@
+using FleetDelivery.BuildingBlocks.Messaging;
 using FleetDelivery.Modules.Shipments.Application.Abstractions;
+using FleetDelivery.Modules.Shipments.Infrastructure.Messaging;
 using FleetDelivery.Modules.Shipments.Infrastructure.Persistence;
 using FleetDelivery.Modules.Shipments.Infrastructure.Persistence.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -19,6 +21,37 @@ public static class DependencyInjection
 
         services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<ShipmentsDbContext>());
         services.AddScoped<IShipmentRepository, ShipmentRepository>();
+
+        services.AddOutboxPublisher(configuration);
+
+        return services;
+    }
+
+    /// <summary>
+    /// M4: drains <c>shipments.outbox_messages</c> to RabbitMQ. Split out of
+    /// <see cref="AddShipmentsModule"/> only for readability — still called
+    /// from there, not from <c>Program.cs</c> directly.
+    /// </summary>
+    private static IServiceCollection AddOutboxPublisher(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.Configure<RabbitMqOptions>(configuration.GetSection(RabbitMqOptions.SectionName));
+        services.Configure<OutboxPublisherOptions>(configuration.GetSection(OutboxPublisherOptions.SectionName));
+
+        services.AddSingleton<RabbitMqConnectionProvider>();
+        services.AddSingleton<IIntegrationEventPublisher, RabbitMqIntegrationEventPublisher>();
+        services.AddScoped<OutboxBatchProcessor>();
+
+        // Off in test hosts that don't spin up a RabbitMQ container (see
+        // ShipmentsApiFactory) — on everywhere else, including local dev via
+        // docker-compose. Read directly rather than through the options
+        // pipeline since this decides whether to register a hosted service
+        // at all, before any IOptions<T> would be resolvable.
+        var publisherEnabled = configuration.GetValue($"{OutboxPublisherOptions.SectionName}:PublisherEnabled", true);
+
+        if (publisherEnabled)
+        {
+            services.AddHostedService<OutboxPublisherHostedService>();
+        }
 
         return services;
     }

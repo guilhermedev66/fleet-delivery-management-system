@@ -5,8 +5,9 @@ deliveries in real time, and managing drivers, vehicles, and routes —
 built to demonstrate a real event-driven backend, not another CRUD app.
 
 > Status: **in development (shipment & delivery lifecycle, fleet vehicle
-> registry)**. Auth/RBAC, CI, Docker, and the app shell are in place. See
-> [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design.
+> registry, RabbitMQ outbox publisher)**. Auth/RBAC, CI, Docker, and the app
+> shell are in place. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for
+> the full design.
 
 ## Overview
 
@@ -42,8 +43,13 @@ Vitest, React Testing Library.
 - Explicit shipment/delivery state machine with optimistic concurrency
 - Fleet vehicle registry (register/list/filter), server-validated on
   dispatch assignment alongside driver availability
-- Transactional Outbox pattern for reliable event publishing
-- Idempotent RabbitMQ consumers (inbox pattern) with retry + DLQ
+- Transactional Outbox pattern, with a background publisher that reliably
+  drains it to RabbitMQ (`FOR UPDATE SKIP LOCKED` claiming, safe across
+  multiple app instances, capped exponential retry backoff — never
+  hot-looping, never silently dropping a message)
+- Idempotent RabbitMQ consumers (inbox pattern) with retry + DLQ —
+  **planned**: the publisher side is built and delivers real messages, but no
+  consumer exists yet to receive them
 - Concurrency-safe dispatch (driver + vehicle assignment)
 - Real-time dispatch board and tracking via SignalR
 - Secure Proof of Delivery uploads

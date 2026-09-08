@@ -118,6 +118,71 @@ Only what's expensive to re-derive. Not a changelog.
   to compute `isAvailable`. Busy drivers stay in the list (disabled in the
   UI with a reason), never silently filtered out.
 
+## M4 — RabbitMQ Outbox Publisher (backend-complete, handoff below)
+
+- **Claiming strategy: `SELECT ... FOR UPDATE SKIP LOCKED`** inside an
+  explicit transaction (`OutboxBatchProcessor.ProcessBatchAsync`), not a
+  lease/claimed-by column. Chosen because the Postgres row lock releases
+  itself on crash/rollback — no stale-claim cleanup logic needed, unlike a
+  lease that can outlive the worker that took it. Proven safe with a real
+  test running two concurrent processors against real Postgres
+  (`OutboxPublisherTests.Two_concurrent_batch_processors_never_publish_the_same_row_twice`),
+  not just reasoned about.
+- **Retry**: added `AttemptCount`/`NextAttemptOn` to `OutboxMessage` (shared
+  BuildingBlocks type). Exponential backoff capped at
+  `Outbox:MaxBackoffSeconds` (default 300s) — bounded *frequency*, not
+  bounded *attempts*: a row is retried forever, never abandoned (no
+  publisher-side dead-letter step — DLQ is a consumer-rejection concept,
+  and there are no consumers yet).
+- **At-least-once delivery, by design**: a crash between a successful
+  RabbitMQ publish and the DB commit that marks `ProcessedOn` causes a
+  redelivery on restart. `IntegrationEventEnvelope.MessageId` is the outbox
+  row's own id specifically so a future consumer's Inbox pattern can
+  de-duplicate on it. Don't "fix" this into exactly-once — it's the standard
+  outbox/broker tradeoff, and the mitigation is the consumer's job.
+- **RabbitMQ is Shipments-module-local** (`RabbitMqOptions`,
+  `RabbitMqConnectionProvider`, the publisher itself all live in
+  `Shipments.Infrastructure/Messaging/`), same YAGNI reasoning as the
+  per-module Outbox table — promote to BuildingBlocks only once a second
+  module needs to publish. `IIntegrationEventPublisher` (the interface) and
+  `IntegrationEventEnvelope`/`OutboxMessage` (the shapes) DO live in
+  BuildingBlocks since they're the generic, reusable parts.
+- **JSON casing fix**: `ShipmentsDbContext`'s domain-event -> `OutboxMessage.Content`
+  serialization was PascalCase (an M2 oversight, harmless until something
+  actually read the content). Switched to `JsonSerializerDefaults.Web`
+  (camelCase) to match the HTTP API and the new RabbitMQ envelope — a
+  one-line, low-risk fix, in-scope for M4 since it directly affects the
+  published event contract.
+- **Publisher tests disabled by default**: `Outbox:PublisherEnabled=false`
+  in `ShipmentsApiFactory` (no RabbitMQ container there). A dedicated
+  `OutboxPublisherApiFactory` spins up Postgres + RabbitMQ via
+  Testcontainers; its tests call `OutboxBatchProcessor.ProcessBatchAsync`
+  directly rather than waiting on the hosted service's poll timer.
+- **Not built** (deliberately out of scope for a publisher-only milestone):
+  any real consumer, queue bindings, or DLQ topology (all consumer-side
+  concerns); request-scoped `correlationId` propagation (currently
+  self-referential — see the doc comment on `RabbitMqIntegrationEventPublisher`);
+  automated tests for DB-outage or graceful-shutdown-mid-batch (reasoned
+  about via the transaction/cancellation-token design, not empirically
+  tested — would need killing a Testcontainer mid-test, judged
+  disproportionate for this milestone).
+- **Evidence at handoff**: 81 backend tests green (39 unit, 18 architecture,
+  24 integration — including 3 new `OutboxPublisherTests`), `dotnet build`
+  clean (0 warnings), CI green on push.
+
+### Ownership note (2026-09-08)
+
+User's stated preference: substantial backend work should go to a Codex
+Backend agent when one is reachable in-session, with Claude as orchestrator.
+Checked via `ListAgents` this session — no Codex mechanism (agent type, MCP
+server, or CLI) is present here; only local subagent types and unrelated
+Remote Control sessions. Don't assume that's permanent — recheck with
+`ListAgents` at the start of future sessions rather than assuming
+unavailability carries over. When Codex Backend *is* reachable, hand off
+new backend milestones to it rather than implementing them directly;
+finishing a unit Claude already started mid-flight is the documented
+exception, not a general license to keep building backend features solo.
+
 ## Full spec
 
 The complete product/architecture brief for this project lives in the

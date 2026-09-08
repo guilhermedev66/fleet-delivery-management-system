@@ -66,6 +66,12 @@ public sealed class ShipmentsDbContext(DbContextOptions<ShipmentsDbContext> opti
     // which is not a structural match for IUnitOfWork's Task-returning member.
     Task IUnitOfWork.SaveChangesAsync(CancellationToken cancellationToken) => SaveChangesAsync(cancellationToken);
 
+    // camelCase (Web defaults) to match every other JSON contract this API
+    // emits, including the M4 RabbitMQ envelope this content ends up nested
+    // inside (see RabbitMqIntegrationEventPublisher) — a consumer shouldn't
+    // have to special-case this payload's casing versus everything else.
+    private static readonly JsonSerializerOptions OutboxContentSerializerOptions = new(JsonSerializerDefaults.Web);
+
     private void AppendOutboxMessagesForPendingDomainEvents()
     {
         var aggregatesWithPendingEvents = ChangeTracker
@@ -82,7 +88,7 @@ public sealed class ShipmentsDbContext(DbContextOptions<ShipmentsDbContext> opti
                 {
                     Id = Guid.NewGuid(),
                     Type = domainEvent.GetType().Name,
-                    Content = JsonSerializer.Serialize(domainEvent, domainEvent.GetType()),
+                    Content = JsonSerializer.Serialize(domainEvent, domainEvent.GetType(), OutboxContentSerializerOptions),
                     OccurredOn = DateTimeOffset.UtcNow,
                 });
             }
