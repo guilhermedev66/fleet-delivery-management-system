@@ -1,4 +1,4 @@
-import { type FormEvent, type ReactNode, useState } from 'react'
+import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import type { UseMutationResult, UseQueryResult } from '@tanstack/react-query'
 import { ApiError } from '../../lib/api/client'
@@ -7,6 +7,7 @@ import { useVehicle, useVehicles } from '../vehicles/hooks'
 import { useAuthStore } from '../auth/authStore'
 import {
   useAssignShipment,
+  useAttachProofOfDelivery,
   useCancelShipment,
   useDeliverShipment,
   useDrivers,
@@ -14,6 +15,7 @@ import {
   useInTransitShipment,
   useOutForDeliveryShipment,
   usePickupShipment,
+  useProofOfDeliveryPhoto,
   useReadyForDispatch,
   useRescheduleShipment,
   useReturnShipment,
@@ -429,6 +431,98 @@ function DeliverAction({ shipment }: { shipment: ShipmentResponse }) {
   )
 }
 
+// -- Proof of Delivery: upload (Driver) and display (Driver/Dispatcher/Admin). --
+
+function getProofOfDeliveryErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.problemType?.endsWith('shipment-proof-of-delivery-too-large')) {
+      return 'That photo is too large — the limit is 5 MB.'
+    }
+    if (error.problemType?.endsWith('shipment-invalid-proof-of-delivery-content')) {
+      return "That file doesn't look like a valid JPEG or PNG image."
+    }
+    if (error.problemType?.endsWith('shipment-proof-of-delivery-already-attached')) {
+      return 'A proof of delivery photo has already been attached to this shipment.'
+    }
+    if (error.problemType?.endsWith('shipment-not-delivered')) {
+      return 'This shipment must be marked Delivered before a photo can be attached.'
+    }
+  }
+  return 'Something went wrong. Please try again.'
+}
+
+function AttachProofOfDeliveryAction({ shipment }: { shipment: ShipmentResponse }) {
+  const [file, setFile] = useState<File | null>(null)
+  const mutation = useAttachProofOfDelivery(shipment.id)
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!file) return
+    mutation.mutate(file)
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className={ACTION_CARD_CLASS}>
+      <label htmlFor="pod-file" className="text-sm font-medium">
+        Proof of delivery photo
+      </label>
+      <input
+        id="pod-file"
+        type="file"
+        accept="image/jpeg,image/png"
+        onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+        className={FIELD_CLASS}
+      />
+      <button
+        type="submit"
+        disabled={mutation.isPending || !file}
+        className={`w-fit ${ACTION_BUTTON_CLASS}`}
+      >
+        {mutation.isPending ? 'Uploading…' : 'Upload Photo'}
+      </button>
+      {mutation.isError && (
+        <p role="alert" className="text-sm text-[var(--color-danger)]">
+          {getProofOfDeliveryErrorMessage(mutation.error)}
+        </p>
+      )}
+    </form>
+  )
+}
+
+function ProofOfDeliveryPhoto({ shipmentId }: { shipmentId: string }) {
+  const photoQuery = useProofOfDeliveryPhoto(shipmentId, true)
+  const objectUrl = useMemo(
+    () => (photoQuery.data ? URL.createObjectURL(photoQuery.data) : null),
+    [photoQuery.data],
+  )
+
+  // Revoke whenever the URL changes (new photo, or unmount) — never while
+  // it's still the one the <img> below is rendering.
+  useEffect(() => {
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [objectUrl])
+
+  if (photoQuery.isLoading) {
+    return (
+      <div className="h-48 w-full max-w-xs animate-pulse rounded-md bg-[var(--color-bg-subtle)]" />
+    )
+  }
+  // A 404 here means the viewer isn't authorized to see it (or it's gone) —
+  // the backend already enforces who can fetch it, so there's nothing to
+  // show and nothing to explain.
+  if (photoQuery.isError || !objectUrl) return null
+
+  return (
+    <img
+      src={objectUrl}
+      alt="Proof of delivery"
+      className="max-h-64 w-full max-w-xs rounded-md border border-[var(--color-border)] object-contain"
+    />
+  )
+}
+
 export function ShipmentDetailPage() {
   const { id } = useParams<{ id: string }>()
   const user = useAuthStore((state) => state.user)
@@ -472,6 +566,8 @@ export function ShipmentDetailPage() {
       shipment.status === 'PickedUp' ||
       shipment.status === 'InTransit' ||
       shipment.status === 'OutForDelivery')
+  const showAttachProofOfDelivery =
+    isOwningDriver && shipment.status === 'Delivered' && !shipment.hasProofOfDelivery
 
   return (
     <div className="flex flex-col gap-6">
@@ -502,7 +598,14 @@ export function ShipmentDetailPage() {
         </DetailCard>
       </div>
 
-      {(showActions || showDriverActions) && (
+      {shipment.hasProofOfDelivery && (
+        <div className="flex flex-col gap-3">
+          <h2 className="text-sm font-semibold">Proof of Delivery</h2>
+          <ProofOfDeliveryPhoto shipmentId={shipment.id} />
+        </div>
+      )}
+
+      {(showActions || showDriverActions || showAttachProofOfDelivery) && (
         <div className="flex flex-col gap-3">
           <h2 className="text-sm font-semibold">Actions</h2>
           <div className="flex flex-wrap gap-3">
@@ -539,6 +642,7 @@ export function ShipmentDetailPage() {
                 <FailAction shipment={shipment} />
               </>
             )}
+            {showAttachProofOfDelivery && <AttachProofOfDeliveryAction shipment={shipment} />}
           </div>
         </div>
       )}

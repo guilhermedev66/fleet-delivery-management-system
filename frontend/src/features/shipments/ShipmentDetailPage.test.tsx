@@ -1,7 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
+import { ApiError } from '../../lib/api/client'
 import * as shipmentsApi from '../../lib/api/shipments'
 import * as vehiclesApi from '../../lib/api/vehicles'
 import { useAuthStore } from '../auth/authStore'
@@ -31,6 +33,7 @@ const SHIPMENT: shipmentsApi.ShipmentResponse = {
   assignedVehicleId: null,
   createdByUserId: 'dispatcher-1',
   createdAt: new Date().toISOString(),
+  hasProofOfDelivery: false,
   version: 'v1',
 }
 
@@ -118,5 +121,106 @@ describe('ShipmentDetailPage rescheduled shipment', () => {
     renderDetailPage()
 
     expect(await screen.findByRole('button', { name: /ready for dispatch/i })).toBeInTheDocument()
+  })
+})
+
+describe('ShipmentDetailPage proof of delivery', () => {
+  function signInAsOwningDriver() {
+    useAuthStore.setState({
+      status: 'authenticated',
+      accessToken: 'token',
+      accessTokenExpiresAt: null,
+      user: {
+        id: 'driver-1',
+        email: 'driver@example.com',
+        fullName: 'Alex Driver',
+        role: 'Driver',
+      },
+    })
+  }
+
+  it('lets the assigned driver upload a photo once delivered', async () => {
+    signInAsOwningDriver()
+    vi.spyOn(shipmentsApi, 'getShipment').mockResolvedValue({
+      ...SHIPMENT,
+      status: 'Delivered',
+      assignedDriverId: 'driver-1',
+    })
+    vi.spyOn(shipmentsApi, 'getShipmentTimeline').mockResolvedValue({ events: [] })
+    const attachSpy = vi
+      .spyOn(shipmentsApi, 'attachProofOfDelivery')
+      .mockResolvedValue({ ...SHIPMENT, status: 'Delivered', hasProofOfDelivery: true })
+
+    const user = userEvent.setup()
+    renderDetailPage()
+
+    const fileInput = await screen.findByLabelText(/proof of delivery photo/i)
+    const file = new File(['fake-bytes'], 'proof.jpg', { type: 'image/jpeg' })
+    await user.upload(fileInput, file)
+
+    const uploadButton = screen.getByRole('button', { name: /upload photo/i })
+    expect(uploadButton).not.toBeDisabled()
+    await user.click(uploadButton)
+
+    expect(attachSpy).toHaveBeenCalledWith('shipment-1', file)
+  })
+
+  it('shows a specific message when the uploaded file is rejected', async () => {
+    signInAsOwningDriver()
+    vi.spyOn(shipmentsApi, 'getShipment').mockResolvedValue({
+      ...SHIPMENT,
+      status: 'Delivered',
+      assignedDriverId: 'driver-1',
+    })
+    vi.spyOn(shipmentsApi, 'getShipmentTimeline').mockResolvedValue({ events: [] })
+    vi.spyOn(shipmentsApi, 'attachProofOfDelivery').mockRejectedValue(
+      new ApiError(
+        400,
+        'Request failed with status 400',
+        'https://fleetdelivery.local/errors/shipment-invalid-proof-of-delivery-content',
+      ),
+    )
+
+    const user = userEvent.setup()
+    renderDetailPage()
+
+    const fileInput = await screen.findByLabelText(/proof of delivery photo/i)
+    await user.upload(
+      fileInput,
+      new File(['not-really-a-jpeg'], 'proof.jpg', { type: 'image/jpeg' }),
+    )
+    await user.click(screen.getByRole('button', { name: /upload photo/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /doesn't look like a valid jpeg or png/i,
+    )
+  })
+
+  it("renders the photo once it's attached", async () => {
+    signInAsOwningDriver()
+    vi.spyOn(shipmentsApi, 'getShipment').mockResolvedValue({
+      ...SHIPMENT,
+      status: 'Delivered',
+      assignedDriverId: 'driver-1',
+      hasProofOfDelivery: true,
+    })
+    vi.spyOn(shipmentsApi, 'getShipmentTimeline').mockResolvedValue({ events: [] })
+    vi.spyOn(shipmentsApi, 'getProofOfDeliveryPhoto').mockResolvedValue(
+      new Blob(['fake-bytes'], { type: 'image/jpeg' }),
+    )
+    const originalCreateObjectURL = URL.createObjectURL
+    const originalRevokeObjectURL = URL.revokeObjectURL
+    URL.createObjectURL = vi.fn(() => 'blob:mock-url')
+    URL.revokeObjectURL = vi.fn()
+
+    try {
+      renderDetailPage()
+
+      const photo = await screen.findByRole('img', { name: /proof of delivery/i })
+      expect(photo).toHaveAttribute('src', 'blob:mock-url')
+    } finally {
+      URL.createObjectURL = originalCreateObjectURL
+      URL.revokeObjectURL = originalRevokeObjectURL
+    }
   })
 })

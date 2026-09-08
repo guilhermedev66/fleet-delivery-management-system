@@ -1,10 +1,12 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   assignShipment,
+  attachProofOfDelivery,
   cancelShipment,
   createShipment,
   deliverShipment,
   failShipment,
+  getProofOfDeliveryPhoto,
   getShipment,
   getShipmentTimeline,
   inTransitShipment,
@@ -25,6 +27,7 @@ export const shipmentKeys = {
   details: () => [...shipmentKeys.all, 'detail'] as const,
   detail: (id: string) => [...shipmentKeys.details(), id] as const,
   timeline: (id: string) => [...shipmentKeys.detail(id), 'timeline'] as const,
+  proofOfDelivery: (id: string) => [...shipmentKeys.detail(id), 'proof-of-delivery'] as const,
 }
 
 export function useShipments(filters: ShipmentFilters) {
@@ -174,5 +177,29 @@ export function useCancelShipment(id: string) {
     mutationFn: ({ expectedVersion, reason }: { expectedVersion: string; reason: string }) =>
       cancelShipment(id, expectedVersion, reason),
     onSettled: invalidate,
+  })
+}
+
+export function useAttachProofOfDelivery(id: string) {
+  const invalidate = useInvalidateShipment(id)
+  return useMutation({
+    mutationFn: (file: File) => attachProofOfDelivery(id, file),
+    onSettled: invalidate,
+  })
+}
+
+/**
+ * The photo is only fetched once the caller knows one is attached
+ * (`enabled`) — an unattached shipment has nothing to fetch, and this is a
+ * binary endpoint so there's no point round-tripping just to get a 404.
+ * `retry: false` because a 404 here means "not authorized to view this
+ * photo", not a transient failure worth retrying.
+ */
+export function useProofOfDeliveryPhoto(id: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: shipmentKeys.proofOfDelivery(id ?? ''),
+    queryFn: () => getProofOfDeliveryPhoto(id as string),
+    enabled: Boolean(id) && enabled,
+    retry: false,
   })
 }

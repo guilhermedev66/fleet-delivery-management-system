@@ -33,6 +33,7 @@ export interface ShipmentResponse {
   assignedVehicleId: string | null
   createdByUserId: string
   createdAt: string
+  hasProofOfDelivery: boolean
   version: string
 }
 
@@ -189,4 +190,14 @@ export function cancelShipment(
     expectedVersion,
     reason,
   })
+}
+
+export function attachProofOfDelivery(id: string, file: File): Promise<ShipmentResponse> {
+  const formData = new FormData()
+  formData.append('file', file)
+  return apiClient.postForm<ShipmentResponse>(`/api/shipments/${id}/proof-of-delivery`, formData)
+}
+
+export function getProofOfDeliveryPhoto(id: string): Promise<Blob> {
+  return apiClient.getBlob(`/api/shipments/${id}/proof-of-delivery`)
 }
