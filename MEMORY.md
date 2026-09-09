@@ -420,6 +420,30 @@ known-unreliable and shouldn't be extended forward.
   POST`) can get blocked even when plain reads (`connection-string`,
   `projects list`) go through fine. Don't fight that block; surface it to
   the user instead.
+- **JWT signing-key fallback was a real gap, found independently twice**
+  (by this session's own code read, and separately by Codex QA's automated
+  scan against a disposable production-mode container): if `Jwt:SigningKey`
+  was ever unset, `Program.cs`'s token-*validation* setup silently fell
+  back to `new string('0', 32)` instead of failing — while token
+  *issuance* (`JwtTokenService`) already threw on an empty key. That
+  asymmetry meant a misconfigured deployment wouldn't crash, it would just
+  accept any JWT forged with the well-known zero key. Fixed (commit
+  `3f3a444`) by throwing at startup instead. Every real environment already
+  configures a real key, so nothing legitimate could regress — verified via
+  the full 98-test suite before pushing. Lesson: a fallback for a *secret*
+  config value is almost never the right default — prefer failing loudly
+  over failing open.
+- **Codex QA's `codex-security` scan is a real, evidence-based tool, not a
+  chat-only review** — it built a disposable Docker container in
+  production mode, made real HTTP requests against it (including the
+  SignalR negotiate endpoint) to prove reachability, and wrote structured
+  artifacts (`report.md`, `findings.json`, `coverage.json`) under
+  `/tmp/fleet-security-<random>/`, readable directly from this session's
+  own shell (same machine). It confirmed no IDOR/CORS/build-context issues
+  beyond the one JWT finding, which this session had already found and
+  fixed independently by the time the report landed — good convergent
+  signal, not redundant effort (the fix was already committed before the
+  report confirmed it).
 - **This project's Maestri canvas has stale notes from a different project
   (FluxoraERP)** — "M3-M4 Closure Status" and "M6 Domain Status" notes on
   this canvas describe Produtos/Clientes/Fornecedores/sales-orders, not
