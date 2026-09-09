@@ -360,6 +360,73 @@ have been M6 or later. **Refer to milestones by name in conversation and
 new docs, not by number** — the numbers in old commit messages are now
 known-unreliable and shouldn't be extended forward.
 
+## Production deployment (2026-09-09)
+
+- **Render's Docker runtime has no CLI/dashboard-CLI way to point at a
+  nested Dockerfile** — `render services create` only exposes
+  `--root-directory`, which becomes both the build context and where it
+  looks for `Dockerfile` by convention. Relocated
+  `backend/src/FleetDelivery.Api/Dockerfile` to `backend/Dockerfile` (same
+  content) rather than fight the CLI — updated `docker-compose.yml` and
+  `.github/workflows/ci.yml` to match. If a second Dockerfile-needing
+  service is ever added, this constraint applies again.
+- **Render's GitHub App needs explicit per-repo access for private repos.**
+  Both prior Render deploys in this account (`cmms-api-live`,
+  `barber-booking-platform`) are backed by *public* repos — that's why they
+  never hit this. `fleet-delivery-management-system` is private;
+  `render services create` failed with "repository URL is
+  invalid or unfetchable" until access was granted manually via
+  github.com/settings/installations. No API/CLI workaround exists with a
+  normal `gh`-issued OAuth token (`/user/installations` needs a GitHub-App
+  user token, which `gh auth` doesn't provide).
+- **RabbitMQ (CloudAMQP) is not provisioned** — no CLI/API path exists
+  without a human creating the account first (unlike Neon/Render/Vercel,
+  all CLI-automatable once authenticated). Production currently runs with
+  `Outbox:PublisherEnabled=false` and `RealTime:ConsumerEnabled=false`.
+  `RabbitMqConnectionProvider`'s connection is lazy (only opened on first
+  `CreateChannelAsync`), so this doesn't crash the app at startup — but
+  `/health/ready` includes an *unconditional* `RabbitMqHealthCheck` that
+  tries to connect regardless of those flags, so it correctly reports
+  Unhealthy. Render's platform health-check path is deliberately
+  `/health/live` (not `/health/ready`) for exactly this reason — don't
+  "fix" this by pointing Render at `/health/ready` even after CloudAMQP is
+  added, unless every dependency it checks is meant to gate the whole
+  service being marked down.
+- **No self-registration/user-management endpoint exists yet** — the only
+  way to create a `User` is `IdentityDevSeeder` (Development-only,
+  hardcoded `admin@fleetdelivery.local` / `Dev!Passw0rd123`, documented
+  publicly in `backend/README.md`) or direct DB insertion. **Never seed
+  that exact dev credential into production** — it's public knowledge from
+  the repo itself. The production Admin (`admin@fleetdelivery.app`) was
+  created via a one-off local tool that replicates
+  `Microsoft.AspNetCore.Identity.PasswordHasher<T>`'s hash format and
+  inserts directly via Npgsql, with a freshly generated random password
+  delivered to the user as a file, never printed in-session. If another
+  production user is ever needed the same way, that's still a real gap
+  worth eventually closing with a real admin-only user-management endpoint
+  — not a repeat one-off script each time.
+- **Secret-handling incident**: an EF Core connection-string parse failure
+  (`dotnet ef database update --connection "postgresql://..."`) put the raw
+  Neon password into the exception trace, which reached the transcript.
+  Npgsql/EF's `--connection` flag does **not** accept a `postgresql://` URI
+  — it wants the keyword format (`Host=...;Port=...;Database=...;
+  Username=...;Password=...;Ssl Mode=Require;`). Always convert
+  `neonctl connection-string`'s URI output to keyword format (parse with
+  `urllib.parse`, never hand it to `dotnet ef` raw) before using it
+  anywhere an error path might echo it back. The user rotated the exposed
+  credential manually after a sandbox classifier blocked this session's own
+  attempt to call Neon's `reset_password` API — mutating/credential-adjacent
+  API calls made via a generic passthrough command (`neonctl api ... -X
+  POST`) can get blocked even when plain reads (`connection-string`,
+  `projects list`) go through fine. Don't fight that block; surface it to
+  the user instead.
+- **This project's Maestri canvas has stale notes from a different project
+  (FluxoraERP)** — "M3-M4 Closure Status" and "M6 Domain Status" notes on
+  this canvas describe Produtos/Clientes/Fornecedores/sales-orders, not
+  Fleet. Same lesson as the "Multi-agent session note" entry above, now
+  confirmed twice: trust `maestri check "<Agent>"`'s live `directory:` line
+  over any note content when determining what a session actually did.
+
 ## Full spec
 
 The complete product/architecture brief for this project lives in the

@@ -81,14 +81,27 @@ npm run dev
 
 ## Production
 
-| Layer      | Provider   |
-|------------|------------|
-| Frontend   | Vercel     |
-| API        | Render     |
-| Database   | Neon (PostgreSQL) |
-| Messaging  | CloudAMQP (free shared RabbitMQ plan) |
+| Layer      | Provider   | URL |
+|------------|------------|-----|
+| Frontend   | Vercel     | https://fleet-delivery-frontend.vercel.app |
+| API        | Render     | https://fleet-delivery-api.onrender.com |
+| Database   | Neon (PostgreSQL) | (private) |
+| Messaging  | CloudAMQP (free shared RabbitMQ plan) | not yet provisioned |
 
-URLs will be added here once deployed.
+**Known production trade-off:** RabbitMQ isn't provisioned yet (CloudAMQP
+account creation is a manual, human-only step — no API/CLI path with the
+account state available in this environment). Until it is, the API runs
+with `Outbox:PublisherEnabled=false` and `RealTime:ConsumerEnabled=false` —
+shipment state transitions, Proof of Delivery, and the REST API all work
+normally; only the RabbitMQ-backed outbox publish and the SignalR dispatch
+board's live push are paused (SignalR itself, including auth, is live —
+there's just nothing to broadcast without a consumer). `/health/ready`
+correctly reports `Unhealthy` while this is the case (it includes an
+unconditional RabbitMQ check); Render's own platform health gate uses
+`/health/live` instead so this doesn't cause a false-negative restart loop.
+To finish: create a free CloudAMQP instance, set `RabbitMq__Host` /
+`RabbitMq__Username` / `RabbitMq__Password` on the Render service, flip
+both flags back to `true`, redeploy.
 
 ## Documentation
 
