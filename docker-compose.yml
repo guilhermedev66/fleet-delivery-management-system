@@ -36,7 +36,7 @@ services:
   api:
     build:
       context: ./backend
-      dockerfile: src/FleetDelivery.Api/Dockerfile
+      dockerfile: Dockerfile
     container_name: fleet-api
     depends_on:
       postgres:

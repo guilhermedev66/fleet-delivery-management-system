@@ -1,4 +1,7 @@
 # Build context is expected to be `./backend` (see docker-compose.yml at repo root).
+# Lives at the build-context root (rather than nested under src/FleetDelivery.Api)
+# so PaaS providers that default to "<root>/Dockerfile" (e.g. Render) find it
+# without needing a separate dockerfile-path setting.
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
