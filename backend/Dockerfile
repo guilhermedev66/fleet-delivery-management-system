@@ -23,4 +23,8 @@ COPY --from=build /app .
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
 
+# Run as the base image's non-root app user rather than root — the app
+# never writes into /app at runtime, so no ownership change is needed.
+USER $APP_UID
+
 ENTRYPOINT ["dotnet", "FleetDelivery.Api.dll"]
