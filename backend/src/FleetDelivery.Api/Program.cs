@@ -14,6 +14,7 @@ using FleetDelivery.Modules.Shipments.Infrastructure.Persistence;
 using FleetDelivery.Modules.Vehicles.Infrastructure;
 using FleetDelivery.Modules.Vehicles.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -176,6 +177,22 @@ try
         .AddCheck<RabbitMqHealthCheck>("rabbitmq");
 
     var app = builder.Build();
+
+    // Render (and most PaaS hosts) terminate TLS at their edge and forward
+    // plain HTTP to Kestrel, setting X-Forwarded-Proto instead. Without this,
+    // Request.IsHttps is always false from Kestrel's point of view, which
+    // silently defeats both UseHsts() (it only emits the header on an HTTPS
+    // request) and UseHttpsRedirection() (it would redirect every already-
+    // secure request into a loop). KnownNetworks/KnownProxies are cleared
+    // because the only path to Kestrel here is Render's own internal
+    // network — there's no untrusted hop in between to restrict by IP.
+    var forwardedHeadersOptions = new ForwardedHeadersOptions
+    {
+        ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+    };
+    forwardedHeadersOptions.KnownIPNetworks.Clear();
+    forwardedHeadersOptions.KnownProxies.Clear();
+    app.UseForwardedHeaders(forwardedHeadersOptions);
 
     app.UseSerilogRequestLogging();
 
