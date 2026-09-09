@@ -210,6 +210,11 @@ try
         }
     }
 
+    if (!app.Environment.IsDevelopment())
+    {
+        app.UseHsts();
+    }
+
     app.UseHttpsRedirection();
 
     // Blocks MIME-sniffing on every response — most relevant to Proof of
