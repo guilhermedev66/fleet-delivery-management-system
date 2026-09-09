@@ -105,6 +105,20 @@ try
             var jwtSection = builder.Configuration.GetSection(JwtOptions.SectionName);
             var jwtOptions = jwtSection.Get<JwtOptions>() ?? new JwtOptions();
 
+            // Fail loudly at startup rather than falling back to any predictable
+            // key — a silent fallback here would mean a missing Jwt:SigningKey
+            // config value (e.g. an unset env var in a new deployment) turns into
+            // "every token this well-known key can sign is accepted", not "the
+            // app doesn't start". The signing side (JwtTokenService) already
+            // throws on an empty key when issuing; this makes the validation side
+            // fail the same way instead of quietly accepting forged tokens.
+            if (string.IsNullOrEmpty(jwtOptions.SigningKey))
+            {
+                throw new InvalidOperationException(
+                    "Jwt:SigningKey is not configured. Set it via configuration (e.g. the " +
+                    "Jwt__SigningKey environment variable) before starting the API.");
+            }
+
             // Keep claim types exactly as issued (no legacy short-name -> long-URI
             // remapping) — JwtTokenService already writes the role claim using the
             // full ClaimTypes.Role URI so [Authorize(Roles = "...")] works either way.
@@ -116,8 +130,7 @@ try
                 ValidateAudience = true,
                 ValidAudience = jwtOptions.Audience,
                 ValidateIssuerSigningKey = true,
-                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(
-                    string.IsNullOrEmpty(jwtOptions.SigningKey) ? new string('0', 32) : jwtOptions.SigningKey)),
+                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.SigningKey)),
                 ValidateLifetime = true,
                 ClockSkew = TimeSpan.FromSeconds(30),
             };
